@@ -124,6 +124,9 @@ class _HorseAgent {
   static const neighDuration = 1.7;
   double neighT = -1;
 
+  /// Hinnikte het paard (true) of snoof het (false)?
+  bool whinnied = false;
+
   // Samen spelen of elkaar poetsen
   _HorseAgent? partner;
   bool leader = false;
@@ -475,8 +478,12 @@ class _FarmSceneState extends State<FarmScene>
   void _handleTap(TapUpDetails details, Size size) {
     _hit(details.localPosition, size, (horse) {
       // hinniken: hoofd omhoog en geluid (de tik zelf mag het geluid starten)
-      _agents[horse.id]?.startNeigh();
-      HorseSounds.snort(horse);
+      final whinny = HorseSounds.greet(horse);
+      final agent = _agents[horse.id];
+      if (agent != null) {
+        agent.startNeigh();
+        agent.whinnied = whinny;
+      }
       widget.onHorseTap?.call(horse);
     });
   }
@@ -1200,21 +1207,23 @@ class _FarmPainter extends CustomPainter {
     }
   }
 
-  static final TextPainter _neighText = TextPainter(
-    text: const TextSpan(
-      text: 'Brrr!',
-      style: TextStyle(
-          color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
-    ),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  static TextPainter _bubble(String text) => TextPainter(
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(
+              color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+  static final _snortText = _bubble('Brrr!');
+  static final _whinnyText = _bubble('Hihihihi!');
 
   /// Tekstballonnetje bij het hoofd tijdens het hinniken.
   void _neighBubble(Canvas canvas, SceneLayout l, Offset p, double s, _HorseAgent a) {
     final dir = a.facingRight ? 1.0 : -1.0;
     final grow = math.min(1.0, (a.neighT - 0.12) / 0.15);
     final mouth = Offset(p.dx + dir * 76 * s, p.dy - 100 * s);
-    final tp = _neighText;
+    final tp = a.whinnied ? _whinnyText : _snortText;
     final w = tp.width + 18, h = tp.height + 10;
     var left = dir > 0 ? mouth.dx + 6 : mouth.dx - 6 - w;
     left = left.clamp(4.0, math.max(4.0, l.w - w - 4));

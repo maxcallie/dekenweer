@@ -47,6 +47,9 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
   /// Wanneer (kloktijd) elk paard begon te hinniken.
   final Map<String, double> _neighAt = {};
 
+  /// Welke paarden hinnikten (de rest snoof).
+  final Set<String> _whinnied = {};
+
   int? _boxAt(Offset pos, Size size) {
     if (widget.horses.isEmpty) return null;
     final n = math.max(widget.horses.length, 2);
@@ -82,7 +85,11 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
           if (i == null) return;
           final horse = widget.horses[i].horse;
           _neighAt[horse.id] = _clock.value;
-          HorseSounds.snort(horse);
+          if (HorseSounds.greet(horse)) {
+            _whinnied.add(horse.id);
+          } else {
+            _whinnied.remove(horse.id);
+          }
           widget.onHorseTap?.call(horse);
         },
         onLongPressStart: (d) {
@@ -96,6 +103,7 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
             weather: widget.weather,
             horses: widget.horses,
             neighAt: _neighAt,
+            whinnied: _whinnied,
             covered: widget.covered,
             textScaler: MediaQuery.textScalerOf(context),
           ),
@@ -112,10 +120,12 @@ class _StablePainter extends CustomPainter {
     required this.horses,
     required this.textScaler,
     this.neighAt = const {},
+    this.whinnied = const {},
     this.covered,
   }) : super(repaint: clock);
 
   final Map<String, double> neighAt;
+  final Set<String> whinnied;
 
   /// Hoofd omhoog (0–1) voor een paard dat hinnikt.
   double _neigh(String id, double t) {
@@ -147,14 +157,16 @@ class _StablePainter extends CustomPainter {
     return List.generate(40, (_) => [r.nextDouble(), r.nextDouble(), r.nextDouble()]);
   }();
   static final _labelCache = <String, TextPainter>{};
-  static final TextPainter _bubbleText = TextPainter(
-    text: const TextSpan(
-      text: 'Brrr!',
-      style: TextStyle(
-          color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
-    ),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  static TextPainter _bubble(String text) => TextPainter(
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(
+              color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+  static final _snortText = _bubble('Brrr!');
+  static final _whinnyText = _bubble('Hihihihi!');
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -413,7 +425,7 @@ class _StablePainter extends CustomPainter {
         // tekstballonnetje bij het hinniken
         final nv = _neigh(sh.horse.id, t);
         if (nv > 0.3) {
-          final bp = _bubbleText;
+          final bp = whinnied.contains(sh.horse.id) ? _whinnyText : _snortText;
           final bw2 = bp.width + 18, bh = bp.height + 10;
           final top = hy - 112 * hs;
           final rect = Rect.fromLTWH(
