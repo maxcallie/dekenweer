@@ -72,7 +72,7 @@ class SceneLayout {
   double get w => size.width;
   double get h => size.height;
   double get horizon => h * 0.37;
-  double get pastureTop => h * 0.435;
+  double get pastureTop => h * 0.465;
   final double pastureBottom;
 
   /// Schaal van een paard op diepte [d] (0 = achteraan, 1 = vooraan).
