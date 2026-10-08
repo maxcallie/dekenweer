@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 
 import '../models/advice_settings.dart';
 import '../models/blanket.dart';
@@ -102,9 +105,15 @@ class HorsePackage {
     );
   }
 
-  /// Compacte code voor in een link.
-  String encode() =>
-      base64Url.encode(utf8.encode(jsonEncode(toJson()))).replaceAll('=', '');
+  /// Compacte code voor in een link: ingepakt (deflate) en met korte
+  /// datums, zodat WhatsApp de link in z'n geheel klikbaar maakt. De "z"
+  /// vooraan onderscheidt dit van de oude, niet-ingepakte links.
+  String encode() {
+    final json = jsonEncode(toJson()).replaceAllMapped(
+        RegExp(r'"(\d{4}-\d\d-\d\d)T00:00:00\.000"'), (m) => '"${m[1]}"');
+    final packed = Deflate(utf8.encode(json), level: 9).getBytes();
+    return 'z${base64Url.encode(packed).replaceAll('=', '')}';
+  }
 
   /// Link naar de web-app met dit paard erin.
   String link(Uri appBase) => appBase
@@ -125,8 +134,12 @@ class HorsePackage {
       text = code.group(0)!;
     }
     try {
+      final packed = text.startsWith('z');
+      if (packed) text = text.substring(1);
       final padded = text.padRight((text.length + 3) ~/ 4 * 4, '=');
-      final json = jsonDecode(utf8.decode(base64Url.decode(padded)));
+      var bytes = base64Url.decode(padded);
+      if (packed) bytes = Uint8List.fromList(Inflate(bytes).getBytes());
+      final json = jsonDecode(utf8.decode(bytes));
       if (json is! Map<String, dynamic> || json['horse'] == null) return null;
       return HorsePackage.fromJson(json);
     } catch (_) {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dekenweer/logic/horse_share.dart';
 import 'package:dekenweer/models/blanket.dart';
 import 'package:dekenweer/models/care.dart';
@@ -66,6 +68,14 @@ void main() {
     expect(p.blankets, isEmpty);
     expect(p.horse.stableBlanket, isNull);
     expect(nero.stableBlanket, 'b-stal');
+  });
+
+  test('ingepakte link is veel korter dan de oude', () {
+    final p = pkg();
+    final oud = base64Url.encode(utf8.encode(jsonEncode(p.toJson())));
+    expect(p.encode().length, lessThan(oud.length ~/ 2));
+    // oude (niet-ingepakte) links blijven werken
+    expect(HorsePackage.decode('https://x.nl/dekenweer/?paard=$oud')!.horse.name, 'Nero');
   });
 
   test('onzin geeft null', () {
