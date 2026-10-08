@@ -37,6 +37,28 @@
       background: #2E6B3F; border-radius: 3px; animation: load 1.1s ease-in-out infinite; }
     @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
   </style>
+  <script>
+    // Licht tikje bij het kiezen van iets. Safari op de iPhone heeft geen
+    // trilfunctie voor websites; vanaf iOS 18 geeft het omzetten van een
+    // schakelaar (<input type=checkbox switch>) wel een tikje. Android: vibrate.
+    window.dekenweerHaptic = function () {
+      try {
+        if (navigator.vibrate) { navigator.vibrate(8); return; }
+        var label = window.__dwHapticLabel;
+        if (!label) {
+          label = document.createElement('label');
+          var input = document.createElement('input');
+          input.type = 'checkbox';
+          input.setAttribute('switch', '');
+          label.appendChild(input);
+          label.style.cssText = 'position:fixed;left:-100px;top:-100px;opacity:0;pointer-events:none';
+          document.body.appendChild(label);
+          window.__dwHapticLabel = label;
+        }
+        label.click();
+      } catch (e) {}
+    };
+  </script>
 </head>
 <body>
   <div id="splash">

@@ -5,85 +5,77 @@ import '../models/horse.dart';
 import '../ui.dart';
 import '../widgets/advice_widgets.dart';
 import '../widgets/horse_painter.dart';
-import '../widgets/horseshoe_icon.dart';
 import '../widgets/nero.dart';
-import 'advice_settings_screen.dart';
 import 'blanket_form_screen.dart';
-import 'care_screen.dart';
 import 'horse_form_screen.dart';
-import 'season_screen.dart';
 
-/// "Mijn stal": je paarden en je dekenkast.
-class StableScreen extends StatefulWidget {
-  const StableScreen({super.key, this.initialTab = 0});
-  final int initialTab;
+/// Een tab met een grote titel bovenaan die bij het scrollen kleiner wordt
+/// (zoals in iOS-apps), en optioneel een knop rechtsonder.
+class LargeTitlePage extends StatelessWidget {
+  const LargeTitlePage({
+    super.key,
+    required this.title,
+    required this.slivers,
+    this.fab,
+    this.actions = const [],
+  });
 
-  @override
-  State<StableScreen> createState() => _StableScreenState();
-}
-
-class _StableScreenState extends State<StableScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs =
-      TabController(length: 3, vsync: this, initialIndex: widget.initialTab)
-        ..addListener(() => setState(() {}));
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
+  final String title;
+  final List<Widget> slivers;
+  final Widget? fab;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
-    final tab = _tabs.index;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mijn stal', style: TextStyle(fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            tooltip: 'Seizoenen & stalschema',
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const SeasonScreen())),
-          ),
-          IconButton(
-            tooltip: 'Adviesinstellingen',
-            icon: const Icon(Icons.tune),
-            onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdviceSettingsScreen())),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabs,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-          tabs: const [
-            Tab(icon: HorseshoeIcon(size: 24), text: 'Paarden'),
-            Tab(icon: Icon(Icons.checkroom), text: 'Dekens'),
-            Tab(icon: Icon(Icons.vaccines), text: 'Zorg'),
-          ],
+      floatingActionButton: fab,
+      body: CustomScrollView(slivers: [
+        SliverAppBar.large(
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          actions: actions,
         ),
+        ...slivers,
+      ]),
+    );
+  }
+}
+
+/// Tab "Paarden".
+class HorsesTab extends StatelessWidget {
+  const HorsesTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LargeTitlePage(
+      title: 'Paarden',
+      fab: FloatingActionButton.extended(
+        heroTag: 'fab-paarden',
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const HorseFormScreen())),
+        icon: const Icon(Icons.add),
+        label: const Text('Paard toevoegen'),
       ),
-      floatingActionButton: tab == 2 && AppScope.of(context).horses.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => tab == 2
-                  ? showRegisterSheet(context)
-                  : Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => tab == 0
-                          ? const HorseFormScreen()
-                          : const BlanketFormScreen())),
-              icon: const Icon(Icons.add),
-              label: Text(switch (tab) {
-                0 => 'Paard toevoegen',
-                1 => 'Deken toevoegen',
-                _ => 'Registreren',
-              }),
-            ),
-      body: TabBarView(
-        controller: _tabs,
-        children: const [_HorsesList(), _BlanketsList(), CareTab()],
+      slivers: const [_HorsesList()],
+    );
+  }
+}
+
+/// Tab "Dekens".
+class BlanketsTab extends StatelessWidget {
+  const BlanketsTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LargeTitlePage(
+      title: 'Dekens',
+      fab: FloatingActionButton.extended(
+        heroTag: 'fab-dekens',
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const BlanketFormScreen())),
+        icon: const Icon(Icons.add),
+        label: const Text('Deken toevoegen'),
       ),
+      slivers: const [_BlanketsList()],
     );
   }
 }
@@ -94,8 +86,8 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 16, 32, 100),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const NeroMascot(size: 110),
             const SizedBox(height: 12),
@@ -158,11 +150,15 @@ class _HorsesList extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     if (app.horses.isEmpty) {
-      return const _Empty('Je hebt nog geen paarden toegevoegd.\n'
-          'Tik op "Paard toevoegen" om te beginnen.');
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: _Empty('Je hebt nog geen paarden toegevoegd.\n'
+            'Tik op "Paard toevoegen" om te beginnen.'),
+      );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+      sliver: SliverList.separated(
       itemCount: app.horses.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
@@ -186,6 +182,7 @@ class _HorsesList extends StatelessWidget {
               .push(MaterialPageRoute(builder: (_) => HorseFormScreen(horse: h))),
         );
       },
+      ),
     );
   }
 }
@@ -206,10 +203,10 @@ class _BlanketsList extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     if (app.blankets.isEmpty) {
-      return const _Empty('Je dekenkast is nog leeg.\n\n'
+      return const SliverFillRemaining(hasScrollBody: false, child: _Empty('Je dekenkast is nog leeg.\n\n'
           'Voeg je dekens toe (regendeken, buitendeken, staldeken, onderdeken…) '
           'met hun vulling in gram. Dan zegt het advies precies welke deken '
-          'erop moet, en draagt je paard in de wei die deken.');
+          'erop moet, en draagt je paard in de wei die deken.'));
     }
     // Sorteer: eerst warmtedekens op gewicht, dan de rest.
     final list = app.blankets.toList()
@@ -217,8 +214,9 @@ class _BlanketsList extends StatelessWidget {
         final k = a.kind.index.compareTo(b.kind.index);
         return k != 0 ? k : a.grams.compareTo(b.grams);
       });
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+      sliver: SliverList.separated(
       itemCount: list.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
@@ -236,6 +234,7 @@ class _BlanketsList extends StatelessWidget {
               .push(MaterialPageRoute(builder: (_) => BlanketFormScreen(blanket: b))),
         );
       },
+      ),
     );
   }
 }

@@ -21,3 +21,13 @@ void playSound(String src, {double rate = 1}) {
     // geen geluid is geen ramp
   }
 }
+
+@JS('dekenweerHaptic')
+external void _haptic();
+
+/// Licht tikje (iOS 18+ via een verborgen schakelaar, Android via vibrate).
+void haptic() {
+  try {
+    _haptic();
+  } catch (_) {}
+}

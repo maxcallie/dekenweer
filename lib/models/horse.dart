@@ -170,6 +170,10 @@ class Horse {
 
   Horse copy() => Horse.fromJson(toJson());
 
+  /// Easter egg: Nero is blind aan zijn linkeroog. Een paard dat Nero heet,
+  /// krijgt daarom een licht melkachtig linkeroog.
+  bool get blindLeftEye => name.trim().toLowerCase() == 'nero';
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,

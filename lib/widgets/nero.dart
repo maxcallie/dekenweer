@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../ui.dart';
+import 'horse_painter.dart';
 
 /// Nero – de mascotte van Dekenweer: een vos met een brede bles, een roze
 /// snoet met grijze vlekjes en een donkerblauw halster.
@@ -135,11 +136,14 @@ void paintNeroHead(Canvas canvas, {double blink = 0, double earTilt = 0}) {
     canvas.translate(side * 31, -30);
     canvas.rotate(side * 0.2);
     final h = 9 * (1 - blink) + 1;
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset.zero, width: 13, height: h / 1.5 * 2),
-        p..color = eyeColor);
+    final eyeRect = Rect.fromCenter(center: Offset.zero, width: 13, height: h / 1.5 * 2);
+    canvas.drawOval(eyeRect, p..color = eyeColor);
+    // Nero is blind aan zijn linkeroog (van voren rechts in beeld)
+    final blind = side > 0;
+    if (blind) paintEyeHaze(canvas, eyeRect, const Offset(0.5, 0.8), 5.5);
     if (blink < 0.5) {
-      canvas.drawCircle(Offset(side * -1.5, -2.5), 1.8, p..color = Colors.white);
+      canvas.drawCircle(Offset(side * -1.5, -2.5), blind ? 1.5 : 1.8,
+          p..color = Colors.white.withValues(alpha: blind ? 0.9 : 1));
     }
     canvas.drawArc(
         Rect.fromCenter(center: const Offset(0, -1), width: 16, height: 15),

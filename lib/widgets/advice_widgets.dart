@@ -5,7 +5,7 @@ import '../logic/blanket_picker.dart';
 import '../models/horse.dart';
 import '../models/weather.dart';
 import '../screens/horse_form_screen.dart';
-import '../screens/stable_screen.dart';
+import '../screens/root_shell.dart';
 import '../ui.dart';
 import 'horse_painter.dart';
 import 'nero.dart';
@@ -355,10 +355,8 @@ class _ClosetCard extends StatelessWidget {
           TextButton.icon(
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
             onPressed: () {
-              final nav = Navigator.of(context);
-              nav.pop();
-              nav.push(MaterialPageRoute(
-                  builder: (_) => const StableScreen(initialTab: 1)));
+              Navigator.of(context).pop();
+              RootShell.go(AppTab.dekens);
             },
             icon: const Icon(Icons.checkroom),
             label: const Text('Naar mijn dekens'),

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/horse.dart';
 import '../state/app_state.dart';
 import '../ui.dart';
+import 'stable_screen.dart';
 
 String formatLongDate(DateTime d) => '${d.day} ${monthShort[d.month - 1]} ${d.year}';
 
@@ -134,17 +135,22 @@ class _CareTabState extends State<CareTab> {
     final app = AppScope.of(context);
     final now = DateTime.now();
     if (app.horses.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'Voeg eerst je paarden toe. Daarna kun je hier vaccinaties, '
-            'wormenkuren en mestonderzoeken bijhouden.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.muted, fontSize: 15, height: 1.4),
+      return const LargeTitlePage(title: 'Zorg', slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(32, 16, 32, 100),
+              child: Text(
+                'Voeg eerst je paarden toe. Daarna kun je hier vaccinaties, '
+                'wormenkuren en mestonderzoeken bijhouden.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.muted, fontSize: 15, height: 1.4),
+              ),
+            ),
           ),
         ),
-      );
+      ]);
     }
     if (_horseId != null && app.horseById(_horseId!) == null) _horseId = null;
     bool show(String horseId) => _horseId == null || _horseId == horseId;
@@ -153,9 +159,18 @@ class _CareTabState extends State<CareTab> {
     final history = app.careRecords.where((r) => show(r.horseId)).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
-      children: [
+    return LargeTitlePage(
+      title: 'Zorg',
+      fab: FloatingActionButton.extended(
+        heroTag: 'fab-zorg',
+        onPressed: () => showRegisterSheet(context),
+        icon: const Icon(Icons.add),
+        label: const Text('Registreren'),
+      ),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+          sliver: SliverList.list(children: [
         if (app.horses.length > 1) ...[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -211,6 +226,8 @@ class _CareTabState extends State<CareTab> {
             icon: const Icon(Icons.tune),
             label: const Text('Vaccins en instellingen'),
           ),
+        ),
+          ]),
         ),
       ],
     );

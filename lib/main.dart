@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/root_shell.dart';
 import 'state/app_state.dart';
 import 'ui.dart';
 
@@ -67,7 +67,7 @@ class DekenweerApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const HomeScreen(),
+        home: RootShell(key: RootShell.shellKey),
       ),
     );
   }

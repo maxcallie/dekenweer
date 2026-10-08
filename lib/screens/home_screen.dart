@@ -6,16 +6,16 @@ import 'package:flutter/material.dart';
 import '../logic/blanket_advisor.dart';
 import '../models/horse.dart';
 import '../models/weather.dart';
+import '../services/haptics.dart';
 import '../state/app_state.dart';
 import '../ui.dart';
 import '../widgets/advice_widgets.dart';
 import '../widgets/farm_scene.dart';
 import '../widgets/horse_painter.dart';
-import '../widgets/horseshoe_icon.dart';
 import '../widgets/nero.dart';
 import '../widgets/stable_scene.dart';
 import 'horse_form_screen.dart';
-import 'stable_screen.dart';
+import 'root_shell.dart';
 import 'location_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -339,13 +339,6 @@ class _TopBar extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2.2))
             : null,
       ),
-      const SizedBox(width: 8),
-      _RoundButton(
-        tooltip: 'Mijn stal',
-        child: const HorseshoeIcon(size: 24, color: AppColors.ink),
-        onTap: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const StableScreen())),
-      ),
     ]);
   }
 }
@@ -409,7 +402,10 @@ class _DateStrip extends StatelessWidget {
             child: _DayChip(
               day: d,
               selected: dateOnly(d.date) == app.selectedDay,
-              onTap: () => app.selectDay(d.date),
+              onTap: () {
+                Haptics.select();
+                app.selectDay(d.date);
+              },
             ),
           ),
       ]),
@@ -467,7 +463,10 @@ class _PhaseBar extends StatelessWidget {
           Expanded(
             flex: p == DayPhase.evening ? 5 : 4,
             child: GestureDetector(
-              onTap: () => app.selectPhase(p),
+              onTap: () {
+                Haptics.select();
+                app.selectPhase(p);
+              },
               behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
@@ -603,8 +602,7 @@ class _Sheet extends StatelessWidget {
               icon: Icons.checkroom,
               text: 'Leg je eigen dekens vast, dan zie je per paard precies '
                   'welke deken erop moet.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const StableScreen(initialTab: 1))),
+              onTap: () => RootShell.go(AppTab.dekens),
             ),
             const SizedBox(height: 12),
           ],
@@ -865,7 +863,10 @@ class _DayOverview extends StatelessWidget {
       for (final p in DayPhase.values) p: app.periodFor(app.selectedDay, p),
     };
     Widget cell(DayPhase p, Widget child) => GestureDetector(
-          onTap: () => app.selectPhase(p),
+          onTap: () {
+            Haptics.select();
+            app.selectPhase(p);
+          },
           behavior: HitTestBehavior.opaque,
           child: Container(
             width: 64,
@@ -1012,7 +1013,10 @@ class _DayRow extends StatelessWidget {
     return Material(
       color: selected ? AppColors.green.withValues(alpha: 0.08) : Colors.transparent,
       child: InkWell(
-      onTap: () => app.selectDay(day.date),
+      onTap: () {
+        Haptics.select();
+        app.selectDay(day.date);
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(children: [
@@ -1161,8 +1165,7 @@ class _CareReminder extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => const StableScreen(initialTab: 2))),
+        onTap: () => RootShell.go(AppTab.zorg),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

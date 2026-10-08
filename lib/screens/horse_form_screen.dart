@@ -45,9 +45,18 @@ class _HorseFormScreenState extends State<HorseFormScreen> {
           const SnackBar(content: Text('Geef je paard een naam')));
       return;
     }
+    final wasNero = widget.horse?.blindLeftEye ?? false;
     h.name = name;
     h.age = int.tryParse(_age.text.trim()) ?? h.age;
+    final messenger = ScaffoldMessenger.of(context);
     await AppScope.read(context).saveHorse(h);
+    if (h.blindLeftEye && !wasNero) {
+      // easter egg
+      messenger.showSnackBar(const SnackBar(
+        duration: Duration(seconds: 5),
+        content: Text('Hoi Nero! Kijk maar eens goed naar zijn linkeroog 💛'),
+      ));
+    }
     if (mounted) Navigator.of(context).pop();
   }
 

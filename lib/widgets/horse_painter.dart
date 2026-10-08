@@ -17,6 +17,7 @@ class HorseLook {
     this.neckCover = false,
     this.blaze = Blaze.none,
     this.legs = _noLegMarks,
+    this.blindLeftEye = false,
   });
 
   static const _noLegMarks = [LegMark.none, LegMark.none, LegMark.none, LegMark.none];
@@ -30,6 +31,9 @@ class HorseLook {
   /// Linksvoor, rechtsvoor, linksachter, rechtsachter.
   final List<LegMark> legs;
 
+  /// Licht melkachtig linkeroog (Nero).
+  final bool blindLeftEye;
+
   /// Als er een deken uit de dekenkast gekozen is ([pick]), dan draagt het
   /// paard die deken (kleur en halsstuk); anders de standaardkleur.
   factory HorseLook.of(Horse h, [BlanketAdvice? a, BlanketPick? pick]) =>
@@ -40,7 +44,26 @@ class HorseLook {
         neckCover: pick?.neck ?? a?.neckCover ?? false,
         blaze: h.blaze,
         legs: h.legs,
+        blindLeftEye: h.blindLeftEye,
       );
+}
+
+/// Zachte blauwgrijze waas over een oog (blind, maar vriendelijk): het oog
+/// blijft donker met glans, alleen het midden is wat melkachtig.
+void paintEyeHaze(Canvas canvas, Rect eye, Offset center, double radius,
+    {double strength = 0.55}) {
+  canvas.save();
+  canvas.clipPath(Path()..addOval(eye));
+  canvas.drawCircle(
+    center,
+    radius,
+    Paint()
+      ..shader = ui.Gradient.radial(center, radius, [
+        Color.fromRGBO(200, 214, 226, strength),
+        const Color.fromRGBO(200, 214, 226, 0),
+      ]),
+  );
+  canvas.restore();
 }
 
 /// Houding van het paard op dit moment van de animatie.
@@ -470,7 +493,15 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   canvas.drawCircle(const Offset(28.5, 0.5), 1.1,
       fill..color = const Color(0xFF1A1412));
   canvas.drawCircle(const Offset(8, -2), 1.8, fill..color = const Color(0xFF1A1412));
-  canvas.drawCircle(const Offset(8.6, -2.6), 0.6, fill..color = Colors.white);
+  if (look.blindLeftEye && pose.leftSide) {
+    // we zien de linkerkant: het blinde oog
+    paintEyeHaze(canvas, Rect.fromCircle(center: const Offset(8, -2), radius: 1.8),
+        const Offset(8.1, -1.9), 1.6);
+    canvas.drawCircle(const Offset(8.6, -2.6), 0.55,
+        fill..color = Colors.white.withValues(alpha: 0.9));
+  } else {
+    canvas.drawCircle(const Offset(8.6, -2.6), 0.6, fill..color = Colors.white);
+  }
   // voorlok
   canvas.drawPath(
     Path()
@@ -541,6 +572,7 @@ class _AvatarPainter extends CustomPainter {
       old.look.level != look.level ||
       old.look.blanketColor != look.blanketColor ||
       old.look.neckCover != look.neckCover ||
+      old.look.blindLeftEye != look.blindLeftEye ||
       old.graze != graze ||
       old.leftSide != leftSide;
 }
