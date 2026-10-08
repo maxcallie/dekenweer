@@ -398,8 +398,16 @@ class _FarmSceneState extends State<FarmScene>
       a.endSocial();
       return true;
     });
+    final order = widget.horses.map((h) => h.horse.id).toList();
     for (final id in ids) {
-      _agents.putIfAbsent(id, () => _HorseAgent(id, _rand));
+      _agents.putIfAbsent(id, () {
+        // nieuwe paarden krijgen een eigen plek, verspreid over de wei
+        final a = _HorseAgent(id, _rand);
+        final i = order.indexOf(id), n = order.length;
+        a.x = ((i + 0.5) / n + (_rand.nextDouble() - 0.5) * 0.12).clamp(0.05, 0.95);
+        a.d = i.isEven ? 0.65 + _rand.nextDouble() * 0.35 : _rand.nextDouble() * 0.4;
+        return a;
+      });
     }
   }
 
@@ -409,12 +417,36 @@ class _FarmSceneState extends State<FarmScene>
     for (final a in _agents.values) {
       a.update(dt, _rand);
     }
+    _keepApart(dt);
     _socialTimer -= dt;
     if (_socialTimer <= 0) {
       _socialTimer = 14 + _rand.nextDouble() * 22;
       _startSocial();
     }
     _clock.value = elapsed.inMicroseconds / 1e6;
+  }
+
+  /// Paarden houden een beetje afstand, zodat ze niet over elkaar heen
+  /// staan (behalve als ze samen spelen of elkaar poetsen).
+  void _keepApart(double dt) {
+    final list = _agents.values.toList();
+    for (var i = 0; i < list.length; i++) {
+      for (var j = i + 1; j < list.length; j++) {
+        final a = list[i], b = list[j];
+        if (a.partner == b || a.rolling || b.rolling) continue;
+        final dx = b.x - a.x, dd = (b.d - a.d) * 0.6;
+        final dist = math.sqrt(dx * dx + dd * dd);
+        const min = 0.26;
+        if (dist >= min) continue;
+        final push = (min - dist) * dt * 0.8;
+        final dir = dx == 0 ? (i.isEven ? 1.0 : -1.0) : dx.sign;
+        a.x = (a.x - dir * push).clamp(0.02, 0.98);
+        b.x = (b.x + dir * push).clamp(0.02, 0.98);
+        final ddir = (b.d - a.d) == 0 ? 1.0 : (b.d - a.d).sign;
+        a.d = (a.d - ddir * push * 0.6).clamp(0.0, 1.0);
+        b.d = (b.d + ddir * push * 0.6).clamp(0.0, 1.0);
+      }
+    }
   }
 
   /// Twee vrije paarden gaan samen spelen of elkaar poetsen.
