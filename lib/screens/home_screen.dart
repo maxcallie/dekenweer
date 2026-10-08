@@ -163,14 +163,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
-          DraggableScrollableSheet(
-            initialChildSize: 0.38,
-            minChildSize: 0.36,
-            maxChildSize: 0.93,
-            snap: true,
-            snapSizes: const [0.38],
-            builder: (context, controller) => _Sheet(controller: controller),
-          ),
+          LayoutBuilder(builder: (context, box) {
+            // Helemaal ingeklapt blijft alleen het greepje + "Dekenadvies"
+            // zichtbaar, zodat je de hele wei of stal ziet.
+            final h = box.maxHeight;
+            final bottom = MediaQuery.of(context).padding.bottom;
+            final collapsed = h > 0 ? ((64 + bottom) / h).clamp(0.05, 0.3) : 0.1;
+            return DraggableScrollableSheet(
+              initialChildSize: 0.38,
+              minChildSize: collapsed,
+              maxChildSize: 0.93,
+              snap: true,
+              snapSizes: const [0.38],
+              builder: (context, controller) => _Sheet(controller: controller),
+            );
+          }),
         ],
       ),
     );
