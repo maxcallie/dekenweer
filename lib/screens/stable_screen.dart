@@ -8,6 +8,7 @@ import '../widgets/horse_painter.dart';
 import '../widgets/nero.dart';
 import 'blanket_form_screen.dart';
 import 'horse_form_screen.dart';
+import 'share_screen.dart';
 
 /// Een tab met een grote titel bovenaan die bij het scrollen kleiner wordt
 /// (zoals in iOS-apps), en optioneel een knop rechtsonder.
@@ -48,6 +49,15 @@ class HorsesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return LargeTitlePage(
       title: 'Paarden',
+      actions: [
+        TextButton.icon(
+          onPressed: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const ReceiveHorseScreen())),
+          icon: const Icon(Icons.move_to_inbox),
+          label: const Text('Ontvangen'),
+        ),
+        const SizedBox(width: 8),
+      ],
       fab: FloatingActionButton.extended(
         heroTag: 'fab-paarden',
         onPressed: () => Navigator.of(context)

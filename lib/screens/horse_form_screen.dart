@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../logic/blanket_advisor.dart';
 import '../models/horse.dart';
 import '../ui.dart';
+import 'share_screen.dart';
 import '../widgets/horse_painter.dart';
 
 /// Paard toevoegen of bewerken.
@@ -87,6 +88,12 @@ class _HorseFormScreenState extends State<HorseFormScreen> {
         title: Text(_isNew ? 'Nieuw paard' : h.name,
             style: const TextStyle(fontWeight: FontWeight.w800)),
         actions: [
+          if (!_isNew)
+            IconButton(
+              tooltip: '${h.name} delen',
+              onPressed: () => showShareHorseSheet(context, widget.horse!),
+              icon: const Icon(Icons.ios_share),
+            ),
           if (!_isNew)
             IconButton(
               tooltip: 'Verwijderen',

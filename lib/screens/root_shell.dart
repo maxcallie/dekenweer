@@ -6,6 +6,7 @@ import '../widgets/horseshoe_icon.dart';
 import 'care_screen.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
+import 'share_screen.dart';
 import 'stable_screen.dart';
 
 /// Vaste tabbladen onderin.
@@ -27,6 +28,15 @@ class RootShell extends StatefulWidget {
 
 class RootShellState extends State<RootShell> {
   AppTab _tab = AppTab.wei;
+
+  @override
+  void initState() {
+    super.initState();
+    // Geopend via een deel-link (…?paard=…)? Dan meteen het voorbeeld tonen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) handleIncomingLink(context);
+    });
+  }
 
   void go(AppTab tab) {
     if (tab == _tab) return;

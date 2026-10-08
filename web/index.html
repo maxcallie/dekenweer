@@ -58,6 +58,22 @@
         label.click();
       } catch (e) {}
     };
+    // Deelmenu van de telefoon (WhatsApp e.d.). true = gedeeld of geannuleerd.
+    window.dekenweerShare = function (title, text, url) {
+      if (!navigator.share) return Promise.resolve(false);
+      return navigator.share({ title: title, text: text, url: url }).then(
+        function () { return true; },
+        function (e) { return !!(e && e.name === 'AbortError'); });
+    };
+    // Haalt ?paard=… uit de adresbalk na het inlezen.
+    window.dekenweerClearQuery = function () {
+      try { history.replaceState(history.state, '', location.pathname + location.hash); } catch (e) {}
+    };
+    // Draait de app vanaf het beginscherm?
+    window.dekenweerStandalone = function () {
+      return !!(window.navigator.standalone ||
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+    };
   </script>
 </head>
 <body>
