@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/advice_settings.dart';
 import '../models/blanket.dart';
+import '../models/care.dart';
 import '../models/horse.dart';
 import '../models/season.dart';
 import '../models/weather.dart';
@@ -16,6 +17,9 @@ class Storage {
   static const _blanketsKey = 'blankets_v1';
   static const _settingsKey = 'advice_settings_v1';
   static const _seasonsKey = 'seasons_v1';
+  static const _careKey = 'care_records_v1';
+  static const _vaccinesKey = 'vaccine_types_v1';
+  static const _careSettingsKey = 'care_settings_v1';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -102,5 +106,43 @@ class Storage {
 
   Future<void> saveSeasons(SeasonSettings s) async {
     await (await _prefs).setString(_seasonsKey, jsonEncode(s.toJson()));
+  }
+
+  Future<List<T>> _loadList<T>(String key, T Function(Map<String, dynamic>) f) async {
+    final raw = (await _prefs).getString(key);
+    if (raw == null) return [];
+    try {
+      return (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(f).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<CareRecord>> loadCareRecords() => _loadList(_careKey, CareRecord.fromJson);
+
+  Future<void> saveCareRecords(List<CareRecord> list) async {
+    await (await _prefs)
+        .setString(_careKey, jsonEncode([for (final r in list) r.toJson()]));
+  }
+
+  Future<List<VaccineType>> loadVaccines() => _loadList(_vaccinesKey, VaccineType.fromJson);
+
+  Future<void> saveVaccines(List<VaccineType> list) async {
+    await (await _prefs)
+        .setString(_vaccinesKey, jsonEncode([for (final v in list) v.toJson()]));
+  }
+
+  Future<CareSettings> loadCareSettings() async {
+    final raw = (await _prefs).getString(_careSettingsKey);
+    if (raw == null) return CareSettings.defaults;
+    try {
+      return CareSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return CareSettings.defaults;
+    }
+  }
+
+  Future<void> saveCareSettings(CareSettings s) async {
+    await (await _prefs).setString(_careSettingsKey, jsonEncode(s.toJson()));
   }
 }

@@ -30,11 +30,6 @@ jobs:
       - name: Pakketten ophalen
         run: flutter pub get
 
-      - name: Tests
-        run: flutter test
-        # Een falende test houdt de web-app niet tegen (wel zichtbaar in het log).
-        continue-on-error: true
-
       - name: Web-app bouwen
         run: >
           flutter build web --release
@@ -46,6 +41,20 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
+
+  # Tests apart: een falende test houdt de web-app niet tegen, maar is wel
+  # direct zichtbaar als rood kruisje bij deze job.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Tests
+        run: flutter test
 
   deploy:
     needs: build

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../logic/blanket_advisor.dart';
 import '../logic/blanket_picker.dart';
+import '../logic/care_planner.dart';
 import '../models/advice_settings.dart';
 import '../models/blanket.dart';
+import '../models/care.dart';
 import '../models/day_phase.dart';
 import '../models/horse.dart';
 import '../models/season.dart';
@@ -13,6 +15,8 @@ import '../services/storage.dart';
 import '../services/weather_service.dart';
 
 export '../models/day_phase.dart';
+export '../logic/care_planner.dart';
+export '../models/care.dart';
 export '../models/season.dart';
 
 const weekdayShort = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
@@ -48,6 +52,11 @@ class AppState extends ChangeNotifier {
 
   List<Horse> horses = [];
   List<Blanket> blankets = [];
+
+  /// Vaccinaties, wormenkuren en mestonderzoeken.
+  List<CareRecord> careRecords = [];
+  List<VaccineType> vaccines = [];
+  CareSettings careSettings = CareSettings.defaults;
   FarmLocation location = FarmLocation.fallback;
   bool hasChosenLocation = false;
   Forecast? forecast;
@@ -91,6 +100,9 @@ class AppState extends ChangeNotifier {
     blankets = await _storage.loadBlankets();
     settings = await _storage.loadSettings();
     seasons = await _storage.loadSeasons();
+    careRecords = await _storage.loadCareRecords();
+    vaccines = await _storage.loadVaccines();
+    careSettings = await _storage.loadCareSettings();
     final loc = await _storage.loadLocation();
     if (loc != null) {
       location = loc;
@@ -179,6 +191,76 @@ class AppState extends ChangeNotifier {
     horses.removeWhere((h) => h.id == id);
     if (focusHorseId == id) focusHorseId = null;
     await _storage.saveHorses(horses);
+    if (careRecords.any((r) => r.horseId == id)) {
+      careRecords.removeWhere((r) => r.horseId == id);
+      await _storage.saveCareRecords(careRecords);
+    }
+    notifyListeners();
+  }
+
+  // ---- Zorg: vaccinaties en ontworming ---------------------------------
+
+  /// Alles wat op de planning staat, vroegste eerst.
+  List<CareDue> get carePlan =>
+      CarePlanner.plan(careRecords, careSettings, horseIds: horses.map((h) => h.id));
+
+  /// Wat binnenkort moet of te laat is (voor de herinnering).
+  List<CareDue> get careSoon =>
+      CarePlanner.soon(carePlan, careSettings, DateTime.now());
+
+  Horse? horseById(String id) {
+    for (final h in horses) {
+      if (h.id == id) return h;
+    }
+    return null;
+  }
+
+  VaccineType? vaccineById(String? id) {
+    for (final v in vaccines) {
+      if (v.id == id) return v;
+    }
+    return null;
+  }
+
+  Future<void> saveCareRecords(List<CareRecord> list) async {
+    for (final r in list) {
+      final i = careRecords.indexWhere((x) => x.id == r.id);
+      if (i >= 0) {
+        careRecords[i] = r;
+      } else {
+        careRecords.add(r);
+      }
+    }
+    await _storage.saveCareRecords(careRecords);
+    notifyListeners();
+  }
+
+  Future<void> deleteCareRecord(String id) async {
+    careRecords.removeWhere((r) => r.id == id);
+    await _storage.saveCareRecords(careRecords);
+    notifyListeners();
+  }
+
+  Future<void> saveVaccine(VaccineType v) async {
+    final i = vaccines.indexWhere((x) => x.id == v.id);
+    if (i >= 0) {
+      vaccines[i] = v;
+    } else {
+      vaccines.add(v);
+    }
+    await _storage.saveVaccines(vaccines);
+    notifyListeners();
+  }
+
+  Future<void> deleteVaccine(String id) async {
+    vaccines.removeWhere((v) => v.id == id);
+    await _storage.saveVaccines(vaccines);
+    notifyListeners();
+  }
+
+  Future<void> saveCareSettings(CareSettings s) async {
+    careSettings = s;
+    await _storage.saveCareSettings(s);
     notifyListeners();
   }
 

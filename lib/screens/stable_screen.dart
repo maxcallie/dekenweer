@@ -9,6 +9,7 @@ import '../widgets/horseshoe_icon.dart';
 import '../widgets/nero.dart';
 import 'advice_settings_screen.dart';
 import 'blanket_form_screen.dart';
+import 'care_screen.dart';
 import 'horse_form_screen.dart';
 import 'season_screen.dart';
 
@@ -24,7 +25,7 @@ class StableScreen extends StatefulWidget {
 class _StableScreenState extends State<StableScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs =
-      TabController(length: 2, vsync: this, initialIndex: widget.initialTab)
+      TabController(length: 3, vsync: this, initialIndex: widget.initialTab)
         ..addListener(() => setState(() {}));
 
   @override
@@ -35,7 +36,7 @@ class _StableScreenState extends State<StableScreen>
 
   @override
   Widget build(BuildContext context) {
-    final onHorses = _tabs.index == 0;
+    final tab = _tabs.index;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mijn stal', style: TextStyle(fontWeight: FontWeight.w800)),
@@ -59,19 +60,29 @@ class _StableScreenState extends State<StableScreen>
           tabs: const [
             Tab(icon: HorseshoeIcon(size: 24), text: 'Paarden'),
             Tab(icon: Icon(Icons.checkroom), text: 'Dekens'),
+            Tab(icon: Icon(Icons.vaccines), text: 'Zorg'),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) =>
-                onHorses ? const HorseFormScreen() : const BlanketFormScreen())),
-        icon: const Icon(Icons.add),
-        label: Text(onHorses ? 'Paard toevoegen' : 'Deken toevoegen'),
-      ),
+      floatingActionButton: tab == 2 && AppScope.of(context).horses.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => tab == 2
+                  ? showRegisterSheet(context)
+                  : Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => tab == 0
+                          ? const HorseFormScreen()
+                          : const BlanketFormScreen())),
+              icon: const Icon(Icons.add),
+              label: Text(switch (tab) {
+                0 => 'Paard toevoegen',
+                1 => 'Deken toevoegen',
+                _ => 'Registreren',
+              }),
+            ),
       body: TabBarView(
         controller: _tabs,
-        children: const [_HorsesList(), _BlanketsList()],
+        children: const [_HorsesList(), _BlanketsList(), CareTab()],
       ),
     );
   }

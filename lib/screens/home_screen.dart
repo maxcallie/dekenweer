@@ -594,6 +594,10 @@ class _Sheet extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
+          if (app.careSoon.isNotEmpty) ...[
+            _CareReminder(items: app.careSoon),
+            const SizedBox(height: 12),
+          ],
           if (app.horses.isNotEmpty && app.blankets.isEmpty) ...[
             _Banner(
               icon: Icons.checkroom,
@@ -1135,6 +1139,54 @@ class _FirstHorseCta extends StatelessWidget {
               ),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Herinnering voor vaccinaties en ontworming die eraan komen.
+class _CareReminder extends StatelessWidget {
+  const _CareReminder({required this.items});
+  final List<CareDue> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final now = DateTime.now();
+    final shown = items.take(3).toList();
+    final overdue = items.any((d) => d.urgent || d.daysFrom(now) < 0);
+    return Material(
+      color: overdue ? const Color(0xFFFBE3DE) : const Color(0xFFFFF3D6),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const StableScreen(initialTab: 2))),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.vaccines,
+                color: overdue ? const Color(0xFFC8442F) : const Color(0xFF9A6B12)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Zorg',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                for (final d in shown)
+                  Text(
+                    '${app.horseById(d.horseId)?.name ?? ''}: ${d.title} · '
+                    '${d.urgent ? 'zo snel mogelijk' : dueLabel(d.daysFrom(now))}',
+                    style: const TextStyle(fontSize: 14, height: 1.35),
+                  ),
+                if (items.length > shown.length)
+                  Text('en nog ${items.length - shown.length}',
+                      style: const TextStyle(fontSize: 13, color: AppColors.muted)),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.muted),
+          ]),
         ),
       ),
     );
