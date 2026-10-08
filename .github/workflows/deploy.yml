@@ -19,6 +19,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +39,18 @@ jobs:
           flutter build web --release
           --base-href "/${{ github.event.repository.name }}/"
           --no-web-resources-cdn
+
+      # Kopie van de gebouwde app in de tak "web-build", zodat de app ook
+      # buiten GitHub Pages bekeken kan worden (bijv. voor schermafbeeldingen).
+      - name: Bouw bewaren in tak web-build
+        continue-on-error: true
+        run: |
+          cd build/web
+          git init -q
+          git checkout -q -b web-build
+          git add -A
+          git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -qm "Web-build ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" web-build
 
       - uses: actions/configure-pages@v5
 
