@@ -52,7 +52,23 @@ class HorsePose {
     this.tailPhase = 0,
     this.earFlick = 0,
     this.leftSide = false,
+    this.down = 0,
+    this.fold,
+    this.flip = 1,
+    this.neigh = 0,
   });
+
+  /// 0 = staan, 1 = liggen (romp op de grond).
+  final double down;
+
+  /// Hoe ver de benen gevouwen zijn (standaard gelijk aan [down]).
+  final double? fold;
+
+  /// Rollen: 1 = normaal, -1 = op de rug met de benen omhoog.
+  final double flip;
+
+  /// 0 = gewoon, 1 = hoofd omhoog om te hinniken.
+  final double neigh;
 
   /// Zien we de linkerkant van het paard? Kijkt het paard op het scherm naar
   /// rechts, dan zie je zijn rechterkant; kijkt het naar links, dan zijn
@@ -103,11 +119,28 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
     Paint()..color = Colors.black.withValues(alpha: 0.18),
   );
 
+  // Liggen en rollen: de romp zakt naar de grond en kan (bij het rollen)
+  // verticaal omklappen, zodat de benen omhoog wijzen.
+  final down = pose.down.clamp(0.0, 1.0);
+  final foldAmount = (pose.fold ?? down).clamp(0.0, 1.0);
+  final nb = pose.neigh.clamp(0.0, 1.0);
+  canvas.save();
+  if (pose.flip < 1) {
+    // niets onder de grond tekenen
+    canvas.clipRect(const Rect.fromLTRB(-200, -300, 200, 4));
+    canvas.translate(0, -17);
+    canvas.scale(1, pose.flip);
+    canvas.translate(0, 17);
+  }
+  canvas.translate(0, down * 30);
+
   final g = Curves.easeInOut.transform(pose.graze.clamp(0.0, 1.0));
 
   // ---- Benen -----------------------------------------------------------
   void leg(Offset top, double length, double phaseOffset, bool far, LegMark mark) {
-    final swing = math.sin(pose.walkPhase + phaseOffset) * 0.38 * pose.walk;
+    // gevouwen voorbenen gaan naar achteren, achterbenen naar voren
+    final fold = foldAmount * (top.dx > 0 ? 1.35 : -1.25);
+    final swing = math.sin(pose.walkPhase + phaseOffset) * 0.38 * pose.walk + fold;
     canvas.save();
     canvas.translate(top.dx, top.dy);
     canvas.rotate(swing);
@@ -190,15 +223,17 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   // ---- Hals + hoofd geometrie -------------------------------------------
   const withers = Offset(12, -62);
   const chest = Offset(38, -43);
-  final poll = _lerpO(const Offset(52, -94), const Offset(60, -34), g);
-  final headAngle = ui.lerpDouble(0.75, 1.5, g)!;
+  final poll = _lerpO(
+      _lerpO(const Offset(52, -94), const Offset(60, -34), g), const Offset(48, -104), nb);
+  final headAngle = ui.lerpDouble(0.75, 1.5, g)! - 0.55 * nb;
   final cosA = math.cos(headAngle), sinA = math.sin(headAngle);
   Offset head(double x, double y) =>
       Offset(poll.dx + x * cosA - y * sinA, poll.dy + x * sinA + y * cosA);
 
   final pollTop = head(-2, -6);
   final throat = head(2, 9);
-  final ctrlTop = _lerpO(const Offset(30, -90), const Offset(46, -68), g);
+  final ctrlTop = _lerpO(
+      _lerpO(const Offset(30, -90), const Offset(46, -68), g), const Offset(28, -98), nb);
   final ctrlBottom = _lerpO(const Offset(50, -62), const Offset(50, -40), g);
   final neckPath = Path()
     ..moveTo(withers.dx, withers.dy)
@@ -448,6 +483,7 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
       ..strokeCap = StrokeCap.round,
   );
   canvas.restore();
+  canvas.restore(); // liggen/rollen
 }
 
 /// Statische weergave van één paard, bijv. als avatar in een lijst.

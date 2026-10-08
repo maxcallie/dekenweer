@@ -9,6 +9,7 @@ import '../logic/blanket_advisor.dart';
 import '../logic/blanket_picker.dart';
 import '../models/horse.dart';
 import '../models/weather.dart';
+import '../services/sound.dart';
 import 'horse_painter.dart';
 
 /// Welk weer de scène laat zien.
@@ -84,7 +85,9 @@ class SceneLayout {
       );
 }
 
-enum _Activity { graze, walk, stand }
+enum _Activity { graze, walk, stand, roll, play, groom }
+
+double _ease(double t) => Curves.easeInOut.transform(t.clamp(0.0, 1.0));
 
 /// Simulatie van één paard in de wei.
 class _HorseAgent {
@@ -108,13 +111,92 @@ class _HorseAgent {
   double tailPhase;
   double earFlick = 0;
 
+  // Tempo van lopen: rustig stappen of (bij spelen) draven.
+  double speed = 0.045;
+  double gait = 6.5;
+
+  // Rollen
+  static const rollDuration = 6.2;
+  double rollT = 0;
+  double down = 0, fold = 0, flip = 1, shake = 0;
+
+  // Hinniken (seconden sinds het begon; < 0 = niet aan het hinniken)
+  static const neighDuration = 1.7;
+  double neighT = -1;
+
+  // Samen spelen of elkaar poetsen
+  _HorseAgent? partner;
+  bool leader = false;
+  bool groomReady = false;
+  double nibblePhase = 0;
+
+  bool get idle =>
+      (activity == _Activity.graze || activity == _Activity.stand) && neighT < 0;
+  bool get rolling => activity == _Activity.roll;
+  bool get grooming => activity == _Activity.groom && groomReady;
+  bool get dusty => rolling && rollT > 1.3 && rollT < 4.1 || shake > 0;
+
+  /// Hoofd omhoog (0–1) tijdens het hinniken, met een trilling erin.
+  double get neigh {
+    if (neighT < 0) return 0;
+    final t = neighT;
+    final base = t < 0.25
+        ? _ease(t / 0.25)
+        : t < 1.3
+            ? 1.0
+            : 1 - _ease((t - 1.3) / 0.4);
+    return base * (0.94 + 0.06 * math.sin(t * 70));
+  }
+
+  /// Kopje omhoog en even blijven staan.
+  void startNeigh() {
+    if (rolling) return;
+    endSocial();
+    neighT = 0;
+    activity = _Activity.stand;
+    timer = neighDuration + 0.5;
+  }
+
+  void startRoll() {
+    activity = _Activity.roll;
+    rollT = 0;
+  }
+
+  void endSocial() {
+    final p = partner;
+    partner = null;
+    groomReady = false;
+    if (p != null && p.partner == this) {
+      p.partner = null;
+      p.groomReady = false;
+      p._toGraze();
+    }
+  }
+
+  void _toGraze() {
+    activity = _Activity.graze;
+    speed = 0.045;
+    gait = 6.5;
+    timer = 4 + math.Random().nextDouble() * 8;
+  }
+
   void update(double dt, math.Random r) {
     timer -= dt;
+    if (neighT >= 0) {
+      neighT += dt;
+      if (neighT > neighDuration) neighT = -1;
+    }
+    var targetGraze = 0.0;
+    var moving = false;
     switch (activity) {
       case _Activity.graze:
       case _Activity.stand:
-        if (timer <= 0) {
-          if (activity == _Activity.graze && r.nextDouble() < 0.25) {
+        targetGraze = activity == _Activity.graze ? 1.0 : 0.0;
+        if (timer <= 0 && neighT < 0) {
+          final roll = r.nextDouble();
+          if (activity == _Activity.graze && roll < 0.06) {
+            startRoll();
+          } else if (activity == _Activity.graze && roll < 0.30) {
             activity = _Activity.stand;
             timer = 2 + r.nextDouble() * 3;
           } else {
@@ -125,28 +207,120 @@ class _HorseAgent {
           }
         }
       case _Activity.walk:
-        final dx = tx - x, dd = (td - d) * 0.35;
-        final dist = math.sqrt(dx * dx + dd * dd);
-        if (dist < 0.01 || timer <= 0) {
-          activity = _Activity.graze;
-          timer = 5 + r.nextDouble() * 9;
-        } else if (graze < 0.25) {
-          // pas lopen als het hoofd omhoog is
-          const speed = 0.045;
-          x += dx / dist * speed * dt;
-          d += (td - d) / dist * speed * dt;
-          if (dx.abs() > 0.004) facingRight = dx > 0;
+        moving = true;
+        if (_arrived() || timer <= 0) _toGraze();
+      case _Activity.roll:
+        _updateRoll(dt);
+      case _Activity.play:
+        moving = true;
+        final p = partner;
+        if (p == null || timer <= 0) {
+          endSocial();
+          _toGraze();
+        } else if (leader) {
+          if (_arrived()) _pickPlayTarget(r);
+        } else {
+          // achter de ander aan
+          tx = (p.x - (p.facingRight ? 0.09 : -0.09)).clamp(0.03, 0.97);
+          td = p.d;
         }
+      case _Activity.groom:
+        final p = partner;
+        if (p == null || timer <= 0) {
+          endSocial();
+          _toGraze();
+        } else if (!groomReady) {
+          if (leader) {
+            // wacht tot de ander er is, met het hoofd omhoog
+            groomReady = p.groomReady;
+          } else if (_arrived()) {
+            groomReady = true;
+            facingRight = p.x > x;
+            p.facingRight = !facingRight;
+          } else {
+            moving = true;
+          }
+        } else {
+          nibblePhase += dt * 5;
+          targetGraze = 0.42 + 0.07 * math.sin(nibblePhase);
+        }
+        if (!groomReady && leader) targetGraze = 0;
     }
 
-    final targetGraze = activity == _Activity.graze ? 1.0 : 0.0;
-    graze += (targetGraze - graze) * math.min(1.0, dt * 2.2);
-    final targetWalk = activity == _Activity.walk && graze < 0.25 ? 1.0 : 0.0;
+    if (moving) {
+      final dx = tx - x, dd = (td - d) * 0.35;
+      final dist = math.sqrt(dx * dx + dd * dd);
+      if (dist > 0.004 && graze < 0.25) {
+        final step = math.min(dist, speed * dt);
+        x += dx / dist * step;
+        d += (td - d) / dist * step;
+        if (dx.abs() > 0.004) facingRight = dx > 0;
+      }
+    }
+
+    if (!rolling) {
+      graze += (targetGraze - graze) * math.min(1.0, dt * 2.2);
+    }
+    final targetWalk = (moving && graze < 0.25) || (rolling && flip < 0) ? 1.0 : 0.0;
     walk += (targetWalk - walk) * math.min(1.0, dt * 5);
-    walkPhase += dt * 6.5 * walk;
+    walkPhase += dt * (rolling ? 9 : gait) * walk;
     tailPhase += dt * (1.4 + r.nextDouble() * 0.4);
     earFlick = math.max(0.0, earFlick - dt * 3);
     if (r.nextDouble() < dt * 0.15) earFlick = 1;
+  }
+
+  bool _arrived() {
+    final dx = tx - x, dd = (td - d) * 0.35;
+    return math.sqrt(dx * dx + dd * dd) < 0.01;
+  }
+
+  void _pickPlayTarget(math.Random r) {
+    // een flink stuk verderop, liefst de andere kant op
+    final dir = x < 0.5 ? 1 : -1;
+    tx = (x + dir * (0.3 + r.nextDouble() * 0.4)).clamp(0.06, 0.94);
+    td = r.nextDouble();
+  }
+
+  /// Gaan liggen, op de rug rollen, opstaan en uitschudden.
+  void _updateRoll(double dt) {
+    rollT += dt;
+    final t = rollT;
+    shake = 0;
+    if (t < 1.0) {
+      down = _ease(t);
+      fold = down;
+      flip = 1;
+      graze = 0.3 * down;
+    } else if (t < 1.3) {
+      down = fold = 1;
+    } else if (t < 1.9) {
+      final u = _ease((t - 1.3) / 0.6);
+      flip = math.cos(math.pi * u);
+      fold = 1 - 0.85 * u;
+      graze = 0.3 + 0.7 * u;
+    } else if (t < 3.5) {
+      flip = -1 + 0.08 * (1 - math.cos((t - 1.9) * 7)) / 2;
+      fold = 0.15;
+    } else if (t < 4.1) {
+      final u = _ease((t - 3.5) / 0.6);
+      flip = -math.cos(math.pi * u);
+      fold = 0.15 + 0.85 * u;
+      graze = 1 - 0.8 * u;
+    } else if (t < 5.0) {
+      flip = 1;
+      final u = _ease((t - 4.1) / 0.9);
+      down = 1 - u;
+      fold = down;
+      graze = 0.2 * (1 - u);
+    } else if (t < rollDuration) {
+      down = fold = 0;
+      graze = 0;
+      shake = 1;
+    } else {
+      down = fold = shake = 0;
+      flip = 1;
+      _toGraze();
+    }
   }
 }
 
@@ -157,12 +331,18 @@ class FarmScene extends StatefulWidget {
     required this.weather,
     required this.horses,
     this.onHorseTap,
+    this.onHorseLongPress,
     this.covered,
   });
 
   final SceneWeather weather;
   final List<SceneHorse> horses;
+
+  /// Tik op een paard (het paard hinnikt al vanzelf).
   final ValueChanged<Horse>? onHorseTap;
+
+  /// Lang drukken op een paard.
+  final ValueChanged<Horse>? onHorseLongPress;
 
   /// Deel van de hoogte dat onderin door het paneel bedekt is.
   final ValueListenable<double>? covered;
@@ -178,6 +358,10 @@ class _FarmSceneState extends State<FarmScene>
   final _rand = math.Random();
   final Map<String, _HorseAgent> _agents = {};
   Duration _last = Duration.zero;
+  Size _size = Size.zero;
+
+  /// Tijd tot twee paarden iets samen gaan doen.
+  double _socialTimer = 8;
 
   @override
   void initState() {
@@ -194,7 +378,11 @@ class _FarmSceneState extends State<FarmScene>
 
   void _syncAgents() {
     final ids = widget.horses.map((h) => h.horse.id).toSet();
-    _agents.removeWhere((id, _) => !ids.contains(id));
+    _agents.removeWhere((id, a) {
+      if (ids.contains(id)) return false;
+      a.endSocial();
+      return true;
+    });
     for (final id in ids) {
       _agents.putIfAbsent(id, () => _HorseAgent(id, _rand));
     }
@@ -206,7 +394,55 @@ class _FarmSceneState extends State<FarmScene>
     for (final a in _agents.values) {
       a.update(dt, _rand);
     }
+    _socialTimer -= dt;
+    if (_socialTimer <= 0) {
+      _socialTimer = 14 + _rand.nextDouble() * 22;
+      _startSocial();
+    }
     _clock.value = elapsed.inMicroseconds / 1e6;
+  }
+
+  /// Twee vrije paarden gaan samen spelen of elkaar poetsen.
+  void _startSocial() {
+    final free = _agents.values.where((a) => a.idle && a.partner == null).toList()
+      ..shuffle(_rand);
+    if (free.length < 2 || _size.isEmpty) return;
+    final a = free[0], b = free[1];
+    a.partner = b;
+    b.partner = a;
+    a.leader = true;
+    b.leader = false;
+    if (_rand.nextBool()) {
+      // spelen: de een draaft weg, de ander erachteraan
+      for (final h in [a, b]) {
+        h.activity = _Activity.play;
+        h.timer = 6 + _rand.nextDouble() * 3;
+        h.speed = 0.13;
+        h.gait = 12;
+      }
+      b.speed = 0.14;
+      a._pickPlayTarget(_rand);
+    } else {
+      // poetsen: b komt naast a staan, andersom, hoofd bij de schoft
+      final l = SceneLayout(_size, widget.covered?.value ?? 0.38);
+      final side = a.x < 0.5 ? 1.0 : -1.0;
+      final off = 83 * l.horseScale(a.d) / (l.w * 0.88);
+      for (final h in [a, b]) {
+        h.activity = _Activity.groom;
+        h.timer = 14;
+        h.groomReady = false;
+        h.speed = 0.045;
+        h.gait = 6.5;
+      }
+      a.facingRight = side > 0;
+      b.tx = (a.x + side * off).clamp(0.03, 0.97);
+      b.td = (a.d + 0.06).clamp(0.0, 1.0);
+      // past b er niet naast (rand van de wei)? dan niet
+      if ((b.tx - (a.x + side * off)).abs() > 0.01) {
+        a.endSocial();
+        a.activity = _Activity.graze;
+      }
+    }
   }
 
   @override
@@ -216,9 +452,7 @@ class _FarmSceneState extends State<FarmScene>
     super.dispose();
   }
 
-  void _handleTap(TapUpDetails details, Size size) {
-    final cb = widget.onHorseTap;
-    if (cb == null) return;
+  _HorseAgent? _hit(Offset pos, Size size, [void Function(Horse)? found]) {
     final layout = SceneLayout(size, widget.covered?.value ?? 0.38);
     // vooraan staande paarden eerst (die liggen bovenop)
     final sorted = widget.horses.toList()
@@ -230,20 +464,38 @@ class _FarmSceneState extends State<FarmScene>
       final p = layout.horsePos(a.x, a.d);
       final s = layout.horseScale(a.d);
       final rect = Rect.fromLTRB(p.dx - 55 * s, p.dy - 110 * s, p.dx + 55 * s, p.dy + 4 * s);
-      if (rect.inflate(8).contains(details.localPosition)) {
-        cb(sh.horse);
-        return;
+      if (rect.inflate(8).contains(pos)) {
+        found?.call(sh.horse);
+        return a;
       }
     }
+    return null;
+  }
+
+  void _handleTap(TapUpDetails details, Size size) {
+    _hit(details.localPosition, size, (horse) {
+      // hinniken: hoofd omhoog en geluid (de tik zelf mag het geluid starten)
+      _agents[horse.id]?.startNeigh();
+      HorseSounds.whinny(horse);
+      widget.onHorseTap?.call(horse);
+    });
+  }
+
+  void _handleLongPress(LongPressStartDetails details, Size size) {
+    final cb = widget.onHorseLongPress;
+    if (cb == null) return;
+    _hit(details.localPosition, size, cb);
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
       final size = Size(c.maxWidth, c.maxHeight);
+      _size = size;
       return GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (d) => _handleTap(d, size),
+        onLongPressStart: (d) => _handleLongPress(d, size),
         child: CustomPaint(
           size: size,
           painter: _FarmPainter(
@@ -863,8 +1115,11 @@ class _FarmPainter extends CustomPainter {
       final a = agents[sh.horse.id]!;
       final p = l.horsePos(a.x, a.d);
       final s = l.horseScale(a.d);
+      if (a.dusty) _dust(canvas, p, s, t, a);
       canvas.save();
-      canvas.translate(p.dx, p.dy);
+      // uitschudden na het rollen: snel heen en weer
+      final jitter = a.shake * math.sin(t * 55) * 1.6 * s;
+      canvas.translate(p.dx + jitter, p.dy);
       canvas.scale(a.facingRight ? s : -s, s);
       paintHorse(
         canvas,
@@ -876,9 +1131,27 @@ class _FarmPainter extends CustomPainter {
           tailPhase: a.tailPhase,
           earFlick: a.earFlick,
           leftSide: !a.facingRight,
+          down: a.down,
+          fold: a.fold,
+          flip: a.flip,
+          neigh: a.neigh,
         ),
       );
       canvas.restore();
+    }
+  }
+
+  /// Stofwolkjes bij het rollen en uitschudden.
+  void _dust(Canvas canvas, Offset p, double s, double t, _HorseAgent a) {
+    final base = _night ? const Color(0xFF8A8478) : const Color(0xFFD8C9A8);
+    final paint = Paint();
+    for (var i = 0; i < 9; i++) {
+      final q = _particles[i + 40];
+      final life = (t * 0.9 + q[0]) % 1.0;
+      final x = p.dx + (q[1] - 0.5) * 80 * s + (q[1] - 0.5) * life * 40 * s;
+      final y = p.dy - 4 * s - life * (18 + q[2] * 16) * s;
+      paint.color = base.withValues(alpha: 0.45 * (1 - life));
+      canvas.drawCircle(Offset(x, y), (5 + life * 9) * s * (0.7 + q[2] * 0.6), paint);
     }
   }
 
@@ -903,7 +1176,8 @@ class _FarmPainter extends CustomPainter {
         )..layout(),
       );
       // label hangt boven de rug en schuift mee met hoofd omhoog/omlaag
-      final top = p.dy - (82 - a.graze * 14) * s - tp.height - 12;
+      // (en zakt mee als het paard ligt)
+      final top = p.dy - (82 - a.graze * 14 - a.down * 26) * s - tp.height - 12;
       final dot = 8.0;
       final w = tp.width + dot + 18;
       final rect = RRect.fromRectAndRadius(
@@ -920,7 +1194,50 @@ class _FarmPainter extends CustomPainter {
       canvas.drawCircle(Offset(rect.left + 9 + dot / 2, rect.center.dy), dot / 2,
           Paint()..color = level.color);
       tp.paint(canvas, Offset(rect.left + 13 + dot, rect.top + 4));
+      if (a.neighT > 0.12 && a.neighT < _HorseAgent.neighDuration - 0.15) {
+        _neighBubble(canvas, l, p, s, a);
+      }
     }
+  }
+
+  static final TextPainter _neighText = TextPainter(
+    text: const TextSpan(
+      text: 'Hihihihi!',
+      style: TextStyle(
+          color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  /// Tekstballonnetje bij het hoofd tijdens het hinniken.
+  void _neighBubble(Canvas canvas, SceneLayout l, Offset p, double s, _HorseAgent a) {
+    final dir = a.facingRight ? 1.0 : -1.0;
+    final grow = math.min(1.0, (a.neighT - 0.12) / 0.15);
+    final mouth = Offset(p.dx + dir * 76 * s, p.dy - 100 * s);
+    final tp = _neighText;
+    final w = tp.width + 18, h = tp.height + 10;
+    var left = dir > 0 ? mouth.dx + 6 : mouth.dx - 6 - w;
+    left = left.clamp(4.0, math.max(4.0, l.w - w - 4));
+    final rect = Rect.fromLTWH(left, mouth.dy - h - 10, w, h);
+    canvas.save();
+    canvas.translate(mouth.dx, mouth.dy);
+    canvas.scale(grow);
+    canvas.translate(-mouth.dx, -mouth.dy);
+    final bubble = Paint()..color = Colors.white.withValues(alpha: 0.95);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.shift(const Offset(0, 1.5)), const Radius.circular(14)),
+        Paint()..color = Colors.black.withValues(alpha: 0.10));
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(14)), bubble);
+    final tailX = dir > 0 ? rect.left + 12 : rect.right - 12;
+    canvas.drawPath(
+        Path()
+          ..moveTo(tailX - 5, rect.bottom - 1)
+          ..lineTo(tailX + 5, rect.bottom - 1)
+          ..lineTo(mouth.dx, mouth.dy - 2)
+          ..close(),
+        bubble);
+    tp.paint(canvas, Offset(rect.left + 9, rect.top + 5));
+    canvas.restore();
   }
 
   // ---- Weer-effecten -----------------------------------------------------

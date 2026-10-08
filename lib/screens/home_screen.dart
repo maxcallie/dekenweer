@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final showStable =
         inside.isNotEmpty && (outside.isEmpty || (_stableOverride ?? false));
 
-    void onHorseTap(Horse h) {
+    void showAdvice(Horse h) {
       final a = app.adviceFor(h);
       if (a != null && period != null) {
         showHorseAdvice(context, h, a, period,
@@ -106,14 +106,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       key: const ValueKey('stal'),
                       weather: scene,
                       horses: inside,
-                      onHorseTap: onHorseTap,
+                      onHorseLongPress: showAdvice,
                       covered: _covered,
                     )
                   : FarmScene(
                       key: const ValueKey('wei'),
                       weather: scene,
                       horses: outside,
-                      onHorseTap: onHorseTap,
+                      onHorseLongPress: showAdvice,
                       covered: _covered,
                     ),
             ),
@@ -628,6 +628,15 @@ class _Sheet extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator()),
+            ),
+          if (app.horses.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 2, left: 4, right: 4),
+              child: Text(
+                'Tik op een paard in de wei of stal en het hinnikt. '
+                'Houd het vast voor het dekenadvies.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.muted, height: 1.35),
+              ),
             ),
           if (period != null && app.horses.isNotEmpty) ...[
             const SizedBox(height: 18),

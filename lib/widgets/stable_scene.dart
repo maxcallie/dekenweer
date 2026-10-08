@@ -10,6 +10,7 @@ import '../models/horse.dart';
 import '../models/weather.dart';
 import 'farm_scene.dart';
 import 'horse_front.dart';
+import '../services/sound.dart';
 import 'horse_painter.dart';
 
 /// De stal van binnen: elk paard in een eigen box, met het hoofd over de
@@ -20,12 +21,17 @@ class StableScene extends StatefulWidget {
     required this.weather,
     required this.horses,
     this.onHorseTap,
+    this.onHorseLongPress,
     this.covered,
   });
 
   final SceneWeather weather;
   final List<SceneHorse> horses;
+  /// Tik op een paard (het paard hinnikt al vanzelf).
   final ValueChanged<Horse>? onHorseTap;
+
+  /// Lang drukken op een paard.
+  final ValueChanged<Horse>? onHorseLongPress;
 
   /// Deel van de hoogte dat onderin door het paneel bedekt is.
   final ValueListenable<double>? covered;
@@ -37,6 +43,20 @@ class StableScene extends StatefulWidget {
 class _StableSceneState extends State<StableScene> with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   final _clock = ValueNotifier<double>(0);
+
+  /// Wanneer (kloktijd) elk paard begon te hinniken.
+  final Map<String, double> _neighAt = {};
+
+  int? _boxAt(Offset pos, Size size) {
+    if (widget.horses.isEmpty) return null;
+    final n = math.max(widget.horses.length, 2);
+    final i = (pos.dx / (size.width / n)).floor();
+    final front = _StablePainter.frontTopFor(size, widget.covered?.value ?? 0.38);
+    if (i >= 0 && i < widget.horses.length && pos.dy > front - size.height * 0.03) {
+      return i;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -58,15 +78,16 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
       return GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (d) {
-          final cb = widget.onHorseTap;
-          if (cb == null || widget.horses.isEmpty) return;
-          final n = math.max(widget.horses.length, 2);
-          final i = (d.localPosition.dx / (size.width / n)).floor();
-          final y = d.localPosition.dy;
-          final front = _StablePainter.frontTopFor(size, widget.covered?.value ?? 0.38);
-          if (i >= 0 && i < widget.horses.length && y > front - size.height * 0.03) {
-            cb(widget.horses[i].horse);
-          }
+          final i = _boxAt(d.localPosition, size);
+          if (i == null) return;
+          final horse = widget.horses[i].horse;
+          _neighAt[horse.id] = _clock.value;
+          HorseSounds.whinny(horse);
+          widget.onHorseTap?.call(horse);
+        },
+        onLongPressStart: (d) {
+          final i = _boxAt(d.localPosition, size);
+          if (i != null) widget.onHorseLongPress?.call(widget.horses[i].horse);
         },
         child: CustomPaint(
           size: size,
@@ -74,6 +95,7 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
             clock: _clock,
             weather: widget.weather,
             horses: widget.horses,
+            neighAt: _neighAt,
             covered: widget.covered,
             textScaler: MediaQuery.textScalerOf(context),
           ),
@@ -89,8 +111,21 @@ class _StablePainter extends CustomPainter {
     required this.weather,
     required this.horses,
     required this.textScaler,
+    this.neighAt = const {},
     this.covered,
   }) : super(repaint: clock);
+
+  final Map<String, double> neighAt;
+
+  /// Hoofd omhoog (0–1) voor een paard dat hinnikt.
+  double _neigh(String id, double t) {
+    final start = neighAt[id];
+    if (start == null) return 0;
+    final e = t - start;
+    if (e < 0 || e > 1.7) return 0;
+    final base = e < 0.25 ? e / 0.25 : e < 1.3 ? 1.0 : 1 - (e - 1.3) / 0.4;
+    return base * (0.92 + 0.08 * math.sin(e * 70));
+  }
 
   /// De onderdeur zakt mee met het paneel, zodat de naambordjes en hoofden
   /// in beeld blijven; de voorkant van de boxen schuift mee.
@@ -112,6 +147,14 @@ class _StablePainter extends CustomPainter {
     return List.generate(40, (_) => [r.nextDouble(), r.nextDouble(), r.nextDouble()]);
   }();
   static final _labelCache = <String, TextPainter>{};
+  static final TextPainter _bubbleText = TextPainter(
+    text: const TextSpan(
+      text: 'Hihihihi!',
+      style: TextStyle(
+          color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -291,7 +334,7 @@ class _StablePainter extends CustomPainter {
       if (look != null) {
         hs = math.min(bw * 0.46 / 80, (doorTop - frontTop) * 1.25 / 162);
         final bob = math.sin(t * 1.3 + i * 2) * 2;
-        hy = doorTop + h * 0.012 - 62 * hs + bob;
+        hy = doorTop + h * 0.012 - 62 * hs + bob - 14 * hs * _neigh(sh!.horse.id, t);
         final cyc = (t + i * 1.7) % 5;
         blink = cyc > 4.75 ? math.sin((cyc - 4.75) / 0.25 * math.pi) : 0.0;
         ear = math.sin(t * 0.7 + i) * 0.08;
@@ -366,6 +409,26 @@ class _StablePainter extends CustomPainter {
         final level = sh.advice?.level ?? BlanketLevel.none;
         canvas.drawCircle(Offset(plate.left + 10, plate.center.dy), 4, p..color = level.color);
         tp.paint(canvas, Offset(plate.left + 18, plate.top + 4));
+
+        // tekstballonnetje bij het hinniken
+        final nv = _neigh(sh.horse.id, t);
+        if (nv > 0.3) {
+          final bp = _bubbleText;
+          final bw2 = bp.width + 18, bh = bp.height + 10;
+          final top = hy - 112 * hs;
+          final rect = Rect.fromLTWH(
+              (cx - bw2 / 2).clamp(4.0, math.max(4.0, w - bw2 - 4)), top - bh, bw2, bh);
+          final bubble = Paint()..color = Colors.white.withValues(alpha: 0.95);
+          canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(14)), bubble);
+          canvas.drawPath(
+              Path()
+                ..moveTo(cx - 5, rect.bottom - 1)
+                ..lineTo(cx + 5, rect.bottom - 1)
+                ..lineTo(cx, rect.bottom + 7)
+                ..close(),
+              bubble);
+          bp.paint(canvas, Offset(rect.left + 9, rect.top + 5));
+        }
       }
 
       // staander
