@@ -72,7 +72,7 @@ class SceneLayout {
   double get w => size.width;
   double get h => size.height;
   double get horizon => h * 0.37;
-  double get pastureTop => h * 0.405;
+  double get pastureTop => h * 0.435;
   final double pastureBottom;
 
   /// Schaal van een paard op diepte [d] (0 = achteraan, 1 = vooraan).
@@ -84,10 +84,14 @@ class SceneLayout {
     return base * ui.lerpDouble(0.22, 0.22 + 0.15 * spread, d)!;
   }
 
-  Offset horsePos(double x, double d) => Offset(
-        ui.lerpDouble(w * 0.06, w * 0.94, x)!,
-        ui.lerpDouble(pastureTop, pastureBottom, d)!,
-      );
+  /// Positie in beeld; paarden blijven met hun hele lijf binnen het scherm.
+  Offset horsePos(double x, double d) {
+    final margin = math.min(w * 0.3, 58 * horseScale(d));
+    return Offset(
+      ui.lerpDouble(margin, w - margin, x)!,
+      ui.lerpDouble(pastureTop, pastureBottom, d)!,
+    );
+  }
 }
 
 enum _Activity { graze, walk, stand, roll, play, groom }
