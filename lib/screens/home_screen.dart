@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -62,8 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final period = app.currentPeriod;
 
     final scene = _sceneWeather(app);
-    // Zolang er nog geen eigen paarden zijn, staat mascotte Nero in de wei.
-    final all = app.horses.isEmpty ? [neroHorse] : app.horses;
+    final all = app.horses;
     SceneHorse sceneHorse(Horse h) {
       final a = app.adviceFor(h);
       return SceneHorse(h, a, app.pickFor(h, a));
@@ -87,11 +87,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         inside.isNotEmpty && (outside.isEmpty || (_stableOverride ?? false));
 
     void onHorseTap(Horse h) {
-      if (h.id == neroHorse.id) {
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const HorseFormScreen()));
-        return;
-      }
       final a = app.adviceFor(h);
       if (a != null && period != null) {
         showHorseAdvice(context, h, a, period,
@@ -170,6 +165,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+          // Lege wei: uitnodiging om het eerste paard toe te voegen. Staat
+          // midden in het zichtbare stuk gras en schuift mee met het paneel.
+          if (app.horses.isEmpty)
+            Positioned.fill(child: LayoutBuilder(builder: (context, box) {
+              return ValueListenableBuilder<double>(
+                valueListenable: _covered,
+                builder: (context, covered, child) {
+                  final h = box.maxHeight;
+                  final grassTop = h * 0.40;
+                  final grassBottom = h * (1 - covered);
+                  final mid = (grassTop + grassBottom) / 2;
+                  return Stack(children: [
+                    Positioned(
+                      left: 24,
+                      right: 24,
+                      top: math.max(grassTop, mid - 66),
+                      child: IgnorePointer(
+                        ignoring: grassBottom - grassTop <= 120,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: grassBottom - grassTop > 120 ? 1 : 0,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  ]);
+                },
+                child: const _FirstHorseCta(),
+              );
+            })),
           LayoutBuilder(builder: (context, box) {
             // Helemaal ingeklapt blijft alleen het greepje + "Dekenadvies"
             // zichtbaar, zodat je de hele wei of stal ziet.
@@ -1054,6 +1079,55 @@ class _Legend extends StatelessWidget {
             ),
           ]),
       ],
+    );
+  }
+}
+
+/// Uitnodiging in de lege wei.
+class _FirstHorseCta extends StatelessWidget {
+  const _FirstHorseCta();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: AppColors.card.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(24),
+        elevation: 6,
+        shadowColor: const Color(0x55000000),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const HorseFormScreen())),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Je wei is nog leeg',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              const Text('Voeg je paard toe en zie welke deken erop moet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: AppColors.muted, height: 1.3)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                decoration: BoxDecoration(
+                  color: AppColors.green,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, color: Colors.white, size: 20),
+                  SizedBox(width: 6),
+                  Text('Paard toevoegen',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }
