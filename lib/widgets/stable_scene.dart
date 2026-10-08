@@ -82,7 +82,7 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
           if (i == null) return;
           final horse = widget.horses[i].horse;
           _neighAt[horse.id] = _clock.value;
-          HorseSounds.whinny(horse);
+          HorseSounds.snort(horse);
           widget.onHorseTap?.call(horse);
         },
         onLongPressStart: (d) {
@@ -149,7 +149,7 @@ class _StablePainter extends CustomPainter {
   static final _labelCache = <String, TextPainter>{};
   static final TextPainter _bubbleText = TextPainter(
     text: const TextSpan(
-      text: 'Hihihihi!',
+      text: 'Brrr!',
       style: TextStyle(
           color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
     ),

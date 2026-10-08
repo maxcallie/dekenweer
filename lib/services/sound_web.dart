@@ -13,7 +13,7 @@ extension type _Audio._(JSObject _) implements JSObject {
 void playSound(String src, {double rate = 1}) {
   try {
     final a = _Audio(src)
-      ..volume = 0.9
+      ..volume = 0.7
       ..preservesPitch = false
       ..playbackRate = rate;
     a.play().toDart.then((_) {}, onError: (_) {});

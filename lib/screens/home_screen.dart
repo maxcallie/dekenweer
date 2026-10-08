@@ -633,7 +633,7 @@ class _Sheet extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.only(top: 2, left: 4, right: 4),
               child: Text(
-                'Tik op een paard in de wei of stal en het hinnikt. '
+                'Tik op een paard in de wei of stal en het snuift. '
                 'Houd het vast voor het dekenadvies.',
                 style: TextStyle(fontSize: 12.5, color: AppColors.muted, height: 1.35),
               ),

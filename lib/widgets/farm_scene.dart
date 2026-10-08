@@ -476,7 +476,7 @@ class _FarmSceneState extends State<FarmScene>
     _hit(details.localPosition, size, (horse) {
       // hinniken: hoofd omhoog en geluid (de tik zelf mag het geluid starten)
       _agents[horse.id]?.startNeigh();
-      HorseSounds.whinny(horse);
+      HorseSounds.snort(horse);
       widget.onHorseTap?.call(horse);
     });
   }
@@ -1202,7 +1202,7 @@ class _FarmPainter extends CustomPainter {
 
   static final TextPainter _neighText = TextPainter(
     text: const TextSpan(
-      text: 'Hihihihi!',
+      text: 'Brrr!',
       style: TextStyle(
           color: Color(0xFF1F2A22), fontSize: 13, fontWeight: FontWeight.w800),
     ),
