@@ -139,11 +139,13 @@ class _StablePainter extends CustomPainter {
 
   /// De onderdeur zakt mee met het paneel, zodat de naambordjes en hoofden
   /// in beeld blijven; de voorkant van de boxen schuift mee.
+  /// Alles moet tussen de dagdelenbalk (± 36% van boven) en het paneel
+  /// passen: hoofden boven de deur, daaronder naambord en deken.
   static double doorTopFor(Size size, double covered) =>
-      (size.height * (1 - covered) - size.height * 0.09)
-          .clamp(size.height * 0.53, size.height * 0.70);
+      (size.height * (1 - covered) - size.height * 0.125)
+          .clamp(size.height * 0.50, size.height * 0.66);
   static double frontTopFor(Size size, double covered) =>
-      doorTopFor(size, covered) - size.height * 0.17;
+      doorTopFor(size, covered) - size.height * 0.10;
 
   final ValueListenable<double>? covered;
 
@@ -202,9 +204,9 @@ class _StablePainter extends CustomPainter {
     // ---- raam met het weer en het licht van buiten ---------------------------
     final winH = math.min(h * 0.13, 92.0);
     final win = Rect.fromCenter(
-        center: Offset(w / 2, math.max(h * 0.035 + 18 + winH / 2, frontTop - h * 0.17)),
-        width: math.min(w * 0.32, 132),
-        height: winH);
+        center: Offset(w * 0.76, h * 0.245),
+        width: math.min(w * 0.36, 140),
+        height: math.min(winH, h * 0.085));
     canvas.drawRRect(
         RRect.fromRectAndRadius(win.inflate(6), const Radius.circular(6)),
         p..color = const Color(0xFF1A100A));
@@ -294,7 +296,7 @@ class _StablePainter extends CustomPainter {
     canvas.drawLine(win.centerLeft, win.centerRight, bar);
     // hoefijzer boven het raam (geluk!)
     canvas.drawArc(
-        Rect.fromCircle(center: Offset(w / 2, win.top - 18), radius: 7),
+        Rect.fromCircle(center: Offset(win.center.dx, win.top - 16), radius: 7),
         math.pi * 0.2,
         -math.pi * 1.4,
         false,
@@ -327,15 +329,15 @@ class _StablePainter extends CustomPainter {
       final x0 = i * bw, cx = x0 + bw / 2;
       final sh = i < horses.length ? horses[i] : null;
       // hooinet
-      final hay = Offset(x0 + bw * 0.16, frontTop + h * 0.075);
-      canvas.drawOval(Rect.fromCenter(center: hay, width: bw * 0.16, height: h * 0.064),
+      final hay = Offset(x0 + bw * 0.16, frontTop + h * 0.045);
+      canvas.drawOval(Rect.fromCenter(center: hay, width: bw * 0.15, height: h * 0.05),
           p..color = const Color(0xFFD9B45A));
       final net = Paint()
         ..color = const Color(0x993C2814)
         ..strokeWidth = 1;
       for (var k = -3; k <= 3; k++) {
-        canvas.drawLine(hay + Offset(k * bw * 0.022, -h * 0.032),
-            hay + Offset(k * bw * 0.015, h * 0.032), net);
+        canvas.drawLine(hay + Offset(k * bw * 0.02, -h * 0.025),
+            hay + Offset(k * bw * 0.014, h * 0.025), net);
       }
 
       // paard: romp achter de spijlen (zonder deken: die hangt over de deur)
@@ -474,7 +476,7 @@ class _StablePainter extends CustomPainter {
     canvas.drawRect(Rect.fromLTWH(w - 4, frontTop - 10, 8, h), p..color = const Color(0xFF2E1C10));
 
     // ---- lantaarns tussen de boxen ---------------------------------------------
-    final lampY = frontTop - h * 0.055;
+    final lampY = frontTop + h * 0.02;
     for (var i = 1; i < n; i++) {
       final c = Offset(bw * i, lampY);
       final r = bw * 0.62;
@@ -487,7 +489,7 @@ class _StablePainter extends CustomPainter {
               const Color(0xFFFFBE64).withValues(alpha: night ? 0.6 : 0.42),
               const Color(0x00FFAA50),
             ]));
-      canvas.drawLine(Offset(c.dx, h * 0.035 + 12), c - const Offset(0, 10),
+      canvas.drawLine(Offset(c.dx, frontTop - 10), c - const Offset(0, 10),
           Paint()
             ..color = const Color(0xFF1A1410)
             ..strokeWidth = 1.5);

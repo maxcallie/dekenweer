@@ -72,7 +72,7 @@ class SceneLayout {
   double get w => size.width;
   double get h => size.height;
   double get horizon => h * 0.37;
-  double get pastureTop => h * 0.445;
+  double get pastureTop => h * 0.405;
   final double pastureBottom;
 
   /// Schaal van een paard op diepte [d] (0 = achteraan, 1 = vooraan).
@@ -80,8 +80,8 @@ class SceneLayout {
   double horseScale(double d) {
     final base = math.min(w, h * 0.62) / 100;
     final spread =
-        ((pastureBottom - pastureTop) / (h * 0.155)).clamp(0.8, 1.7);
-    return base * ui.lerpDouble(0.19, 0.19 + 0.11 * spread, d)!;
+        ((pastureBottom - pastureTop) / (h * 0.165)).clamp(0.8, 1.5);
+    return base * ui.lerpDouble(0.22, 0.22 + 0.15 * spread, d)!;
   }
 
   Offset horsePos(double x, double d) => Offset(
@@ -560,7 +560,11 @@ class _FarmPainter extends CustomPainter {
   static final List<List<double>> _strokes = () {
     final r = math.Random(12);
     return List.generate(
-        320, (_) => [r.nextDouble(), math.pow(r.nextDouble(), 0.8).toDouble(), r.nextDouble(), r.nextDouble()]);
+        560, (_) => [r.nextDouble(), math.pow(r.nextDouble(), 0.8).toDouble(), r.nextDouble(), r.nextDouble()]);
+  }();
+  static final List<Offset> _grainPts = () {
+    final r = math.Random(31);
+    return List.generate(2400, (_) => Offset(r.nextDouble(), r.nextDouble()));
   }();
   static final List<Offset> _stars = () {
     final r = math.Random(3);
@@ -588,7 +592,6 @@ class _FarmPainter extends CustomPainter {
     _stable(canvas, l);
     _pasture(canvas, l, t);
     _fence(canvas, l);
-    _props(canvas, l);
     if (_night) {
       // stal, hek en spullen in het donker; de paarden krijgen hun eigen tint
       canvas.drawRect(
@@ -601,6 +604,7 @@ class _FarmPainter extends CustomPainter {
     _horses(canvas, l, t);
     _glints(canvas, l, t);
     _weatherFx(canvas, l, t);
+    _grain(canvas, l);
     _labels(canvas, l);
   }
 
@@ -698,10 +702,10 @@ class _FarmPainter extends CustomPainter {
 
   /// Positie van de zon (laag bij ochtend en gouden uur) of maan.
   Offset _sunPos(SceneLayout l) => switch (_light) {
-        _Light.morning => Offset(l.w * 0.84, l.h * 0.29),
-        _Light.golden => Offset(l.w * 0.82, l.h * 0.31),
-        _Light.night => Offset(l.w * 0.80, l.h * 0.22),
-        _Light.day => Offset(l.w * 0.80, l.h * 0.21),
+        _Light.morning => Offset(l.w * 0.84, l.h * 0.25),
+        _Light.golden => Offset(l.w * 0.82, l.h * 0.255),
+        _Light.night => Offset(l.w * 0.80, l.h * 0.225),
+        _Light.day => Offset(l.w * 0.80, l.h * 0.215),
       };
 
   void _sunOrMoon(Canvas canvas, SceneLayout l, double t) {
@@ -939,7 +943,7 @@ class _FarmPainter extends CustomPainter {
       _Light.night => const Color(0xFF151A24),
     });
     final snowy = _kind == WeatherKind.snow || weather.frost;
-    for (final (fx, h, w) in const [(0.05, 74.0, 9.0), (0.11, 60.0, 8.0), (0.60, 54.0, 8.0), (0.655, 44.0, 7.0)]) {
+    for (final (fx, h, w) in const [(0.04, 58.0, 8.0), (0.88, 76.0, 9.0), (0.935, 60.0, 8.0)]) {
       canvas.save();
       canvas.translate(l.w * fx, l.horizon + 2);
       canvas.rotate(sway);
@@ -954,100 +958,60 @@ class _FarmPainter extends CustomPainter {
     }
   }
 
+  /// Kleine schuur in de verte (links, onder de dagdelen).
   Rect _stableRect(SceneLayout l) {
     final k = math.min(l.w, l.h * 0.62) / 400;
-    final width = 150 * k;
-    final height = 74 * k;
-    final right = l.w * 0.96;
-    return Rect.fromLTRB(right - width, l.horizon + 6 * k - height,
-        right, l.horizon + 6 * k);
+    final cx = l.w * 0.16;
+    return Rect.fromLTRB(cx - 30 * k, l.horizon + 3 * k - 40 * k, cx + 30 * k, l.horizon + 3 * k);
   }
 
   void _stable(Canvas canvas, SceneLayout l) {
     final r = _stableRect(l);
-    final k = r.width / 150;
-    final wallTop = r.top + 30 * k;
-    final wood = const Color(0xFF8A5A3B);
-    final woodDark = const Color(0xFF6A4128);
-
-    // muren
-    final wall = Rect.fromLTRB(r.left, wallTop, r.right, r.bottom);
-    canvas.drawRect(wall, Paint()..color = wood);
-    final plank = Paint()
-      ..color = woodDark.withValues(alpha: 0.55)
-      ..strokeWidth = 1;
-    for (var x = wall.left + 6 * k; x < wall.right; x += 7 * k) {
-      canvas.drawLine(Offset(x, wall.top), Offset(x, wall.bottom), plank);
-    }
-    // dak (zadeldak met overstek)
-    final roof = Path()
-      ..moveTo(r.left - 8 * k, wallTop + 2 * k)
-      ..lineTo(r.left + 22 * k, r.top)
-      ..lineTo(r.right - 22 * k, r.top)
-      ..lineTo(r.right + 8 * k, wallTop + 2 * k)
+    final k = r.width / 60;
+    final wall = switch (_light) {
+      _Light.night => const Color(0xFF1A1A28),
+      _Light.golden => const Color(0xFF7A4A3A),
+      _Light.morning => const Color(0xFF7E5244),
+      _Light.day => const Color(0xFF8E4A3C),
+    };
+    final body = Path()
+      ..moveTo(r.left, r.bottom)
+      ..lineTo(r.left, r.top + 16 * k)
+      ..lineTo(r.center.dx, r.top)
+      ..lineTo(r.right, r.top + 16 * k)
+      ..lineTo(r.right, r.bottom)
       ..close();
-    canvas.drawPath(roof, Paint()..color = const Color(0xFF3E4148));
-    final roofLine = Paint()
-      ..color = const Color(0xFF2E3036)
-      ..strokeWidth = 1.2;
-    for (var i = 1; i < 4; i++) {
-      final y = r.top + (wallTop - r.top) * i / 4;
-      canvas.drawLine(Offset(r.left, y), Offset(r.right, y), roofLine);
-    }
+    canvas.drawPath(body, Paint()..color = _groundTint(wall));
     if (_kind == WeatherKind.snow || weather.frost) {
-      final snow = Path()
-        ..moveTo(r.left + 22 * k, r.top)
-        ..lineTo(r.right - 22 * k, r.top)
-        ..lineTo(r.right - 14 * k, r.top + 9 * k)
-        ..lineTo(r.left + 14 * k, r.top + 9 * k)
-        ..close();
       canvas.drawPath(
-          snow,
-          Paint()
-            ..color = Colors.white
-                .withValues(alpha: _kind == WeatherKind.snow ? 0.95 : 0.55));
+          Path()
+            ..moveTo(r.left - 2 * k, r.top + 16 * k)
+            ..lineTo(r.center.dx, r.top - 1 * k)
+            ..lineTo(r.right + 2 * k, r.top + 16 * k)
+            ..lineTo(r.right - 4 * k, r.top + 16 * k)
+            ..lineTo(r.center.dx, r.top + 4 * k)
+            ..lineTo(r.left + 4 * k, r.top + 16 * k)
+            ..close(),
+          Paint()..color = Colors.white.withValues(alpha: _kind == WeatherKind.snow ? 0.95 : 0.55));
     }
-
-    // staldeuren (onderdeur dicht, bovendeur open)
-    final doorW = 22 * k, doorH = 34 * k;
-    for (var i = 0; i < 3; i++) {
-      final left = r.left + 18 * k + i * 40 * k;
-      final door = Rect.fromLTWH(left, r.bottom - doorH, doorW, doorH);
-      canvas.drawRect(door.inflate(2 * k), Paint()..color = const Color(0xFFF1E8D8));
-      canvas.drawRect(Rect.fromLTRB(door.left, door.top, door.right, door.center.dy),
-          Paint()..color = _night ? const Color(0xFFFFC765) : const Color(0xFF2A1E16));
-      canvas.drawRect(Rect.fromLTRB(door.left, door.center.dy, door.right, door.bottom),
-          Paint()..color = const Color(0xFFA0683F));
-      final cross = Paint()
-        ..color = const Color(0xFFF1E8D8)
-        ..strokeWidth = 1.6 * k;
-      canvas.drawLine(Offset(door.left, door.center.dy),
-          Offset(door.right, door.bottom), cross);
-      canvas.drawLine(Offset(door.right, door.center.dy),
-          Offset(door.left, door.bottom), cross);
-    }
-    // windvaan met paardje
-    final vane = Offset(r.center.dx, r.top);
-    canvas.drawLine(vane, vane - Offset(0, 14 * k),
-        Paint()
-          ..color = const Color(0xFF2E3036)
-          ..strokeWidth = 1.4 * k);
+    // raampje (brandt 's nachts)
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(r.center.dx, r.bottom - 12 * k), width: 12 * k, height: 10 * k),
+            Radius.circular(1 * k)),
+        Paint()..color = _night ? const Color(0xFFFFC970) : const Color(0xFFE9D2A6));
   }
 
   void _stableGlow(Canvas canvas, SceneLayout l) {
     final r = _stableRect(l);
-    final k = r.width / 150;
-    for (var i = 0; i < 3; i++) {
-      final c = Offset(r.left + 18 * k + i * 40 * k + 11 * k, r.bottom - 26 * k);
-      canvas.drawCircle(c, 26 * k,
-          Paint()
-            ..shader = ui.Gradient.radial(c, 26 * k, [
-              const Color(0x66FFC765),
-              const Color(0x00FFC765),
-            ]));
-      canvas.drawRect(Rect.fromLTWH(c.dx - 11 * k, c.dy - 8 * k, 22 * k, 17 * k),
-          Paint()..color = const Color(0xCCFFC765));
-    }
+    final k = r.width / 60;
+    final c = Offset(r.center.dx, r.bottom - 12 * k);
+    canvas.drawCircle(
+        c,
+        42 * k,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = ui.Gradient.radial(c, 42 * k, [const Color(0x99FFBE64), const Color(0x00FFBE64)]));
   }
 
   void _pasture(Canvas canvas, SceneLayout l, double t) {
@@ -1090,13 +1054,13 @@ class _FarmPainter extends CustomPainter {
       ..color = snowy
           ? const Color(0x99FFFFFF)
           : switch (_light) {
-              _Light.night => const Color(0x33789670),
-              _Light.day => const Color(0x4DDCF0A0),
-              _ => const Color(0x59F0D778),
+              _Light.night => const Color(0x40789670),
+              _Light.day => const Color(0x66DCF0A0),
+              _ => const Color(0x73F0D778),
             };
     final dark = Paint()
       ..strokeCap = StrokeCap.round
-      ..color = snowy ? const Color(0x5996AAC3) : const Color(0x55283C19);
+      ..color = snowy ? const Color(0x5996AAC3) : const Color(0x66283C19);
     final sway = 0.15 + weather.wind * 0.9;
     final n = snowy ? _strokes.length ~/ 3 : _strokes.length;
     for (var i = 0; i < n; i++) {
@@ -1141,39 +1105,6 @@ class _FarmPainter extends CustomPainter {
             snow);
       }
     }
-  }
-
-  void _props(Canvas canvas, SceneLayout l) {
-    final k = math.min(l.w, l.h * 0.62) / 400;
-    // hooiruif met hooi
-    final hay = Offset(l.w * 0.16, l.horizon + l.h * 0.052);
-    canvas.drawOval(Rect.fromCenter(center: hay + Offset(0, 2 * k), width: 46 * k, height: 7 * k),
-        Paint()..color = Colors.black.withValues(alpha: 0.15));
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(center: hay - Offset(0, 10 * k), width: 38 * k, height: 22 * k),
-            Radius.circular(7 * k)),
-        Paint()..color = const Color(0xFFE2BE5A));
-    final straw = Paint()
-      ..color = const Color(0xFFC79E3A)
-      ..strokeWidth = 1.1 * k;
-    for (var i = -3; i <= 3; i++) {
-      canvas.drawLine(hay + Offset(i * 5 * k, -20 * k),
-          hay + Offset(i * 5 * k + 2 * k, -1 * k), straw);
-    }
-    // waterbak
-    final trough = Offset(l.w * 0.70, l.horizon + l.h * 0.055);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(center: trough - Offset(0, 6 * k), width: 40 * k, height: 13 * k),
-            Radius.circular(3 * k)),
-        Paint()..color = const Color(0xFF8A949C));
-    canvas.drawRect(
-        Rect.fromCenter(center: trough - Offset(0, 11 * k), width: 34 * k, height: 3 * k),
-        Paint()
-          ..color = weather.temp <= 0
-              ? const Color(0xFFDDEFF7)
-              : const Color(0xFF6FB1D8));
   }
 
   // ---- Paarden ---------------------------------------------------------
@@ -1249,6 +1180,20 @@ class _FarmPainter extends CustomPainter {
     if (tint.a > 0) {
       canvas.drawRect(b, Paint()..blendMode = BlendMode.srcATop..color = tint);
     }
+  }
+
+  /// Fijne korrel over de scène (een geschilderd gevoel).
+  void _grain(Canvas canvas, SceneLayout l) {
+    final light = <Offset>[], dark = <Offset>[];
+    for (var i = 0; i < _grainPts.length; i++) {
+      final q = _grainPts[i];
+      (i.isEven ? light : dark).add(Offset(q.dx * l.w, q.dy * l.h));
+    }
+    final p = Paint()
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPoints(ui.PointMode.points, light, p..color = const Color(0x14FFFFFF));
+    canvas.drawPoints(ui.PointMode.points, dark, p..color = const Color(0x12000000));
   }
 
   /// Ochtendmist in banen over de wei.
