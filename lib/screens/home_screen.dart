@@ -29,6 +29,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// (geldt voor één dag + fase; daarna weer automatisch).
   bool? _stableOverride;
   String _overrideKey = '';
+
+  /// Hoeveel van het scherm het adviespaneel onderin bedekt (0–1).
+  final _covered = ValueNotifier<double>(0.38);
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _covered.dispose();
     super.dispose();
   }
 
@@ -107,12 +112,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       weather: scene,
                       horses: inside,
                       onHorseTap: onHorseTap,
+                      covered: _covered,
                     )
                   : FarmScene(
                       key: const ValueKey('wei'),
                       weather: scene,
                       horses: outside,
                       onHorseTap: onHorseTap,
+                      covered: _covered,
                     ),
             ),
           ),
@@ -169,13 +176,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final h = box.maxHeight;
             final bottom = MediaQuery.of(context).padding.bottom;
             final collapsed = h > 0 ? ((64 + bottom) / h).clamp(0.05, 0.3) : 0.1;
-            return DraggableScrollableSheet(
-              initialChildSize: 0.38,
-              minChildSize: collapsed,
-              maxChildSize: 0.93,
-              snap: true,
-              snapSizes: const [0.38],
-              builder: (context, controller) => _Sheet(controller: controller),
+            return NotificationListener<DraggableScrollableNotification>(
+              onNotification: (n) {
+                // De paarden in de wei/stal schuiven mee met het paneel.
+                _covered.value = n.extent;
+                return false;
+              },
+              child: DraggableScrollableSheet(
+                initialChildSize: 0.38,
+                minChildSize: collapsed,
+                maxChildSize: 0.93,
+                snap: true,
+                snapSizes: const [0.38],
+                builder: (context, controller) => _Sheet(controller: controller),
+              ),
             );
           }),
         ],

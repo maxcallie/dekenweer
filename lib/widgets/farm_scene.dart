@@ -55,19 +55,26 @@ class SceneHorse {
 
 /// Layout-verhoudingen van de scène (als fractie van de hoogte).
 class SceneLayout {
-  SceneLayout(this.size);
+  /// [covered] is het deel van de hoogte (0–1) dat onderin door het
+  /// adviespaneel wordt bedekt. De paarden blijven in het zichtbare deel.
+  SceneLayout(this.size, [double covered = 0.38])
+      : pastureBottom = (size.height * (1 - covered) - size.height * 0.05)
+            .clamp(size.height * 0.545, size.height * 0.86);
   final Size size;
 
   double get w => size.width;
   double get h => size.height;
   double get horizon => h * 0.37;
   double get pastureTop => h * 0.445;
-  double get pastureBottom => h * 0.60;
+  final double pastureBottom;
 
   /// Schaal van een paard op diepte [d] (0 = achteraan, 1 = vooraan).
+  /// Hoe dieper de zichtbare wei, hoe groter de paarden vooraan.
   double horseScale(double d) {
     final base = math.min(w, h * 0.62) / 100;
-    return base * ui.lerpDouble(0.19, 0.30, d)!;
+    final spread =
+        ((pastureBottom - pastureTop) / (h * 0.155)).clamp(0.8, 1.7);
+    return base * ui.lerpDouble(0.19, 0.19 + 0.11 * spread, d)!;
   }
 
   Offset horsePos(double x, double d) => Offset(
@@ -149,11 +156,15 @@ class FarmScene extends StatefulWidget {
     required this.weather,
     required this.horses,
     this.onHorseTap,
+    this.covered,
   });
 
   final SceneWeather weather;
   final List<SceneHorse> horses;
   final ValueChanged<Horse>? onHorseTap;
+
+  /// Deel van de hoogte dat onderin door het paneel bedekt is.
+  final ValueListenable<double>? covered;
 
   @override
   State<FarmScene> createState() => _FarmSceneState();
@@ -207,7 +218,7 @@ class _FarmSceneState extends State<FarmScene>
   void _handleTap(TapUpDetails details, Size size) {
     final cb = widget.onHorseTap;
     if (cb == null) return;
-    final layout = SceneLayout(size);
+    final layout = SceneLayout(size, widget.covered?.value ?? 0.38);
     // vooraan staande paarden eerst (die liggen bovenop)
     final sorted = widget.horses.toList()
       ..sort((a, b) =>
@@ -239,6 +250,7 @@ class _FarmSceneState extends State<FarmScene>
             weather: widget.weather,
             horses: widget.horses,
             agents: _agents,
+            covered: widget.covered,
             textScaler: MediaQuery.textScalerOf(context),
           ),
         ),
@@ -258,12 +270,14 @@ class _FarmPainter extends CustomPainter {
     required this.horses,
     required this.agents,
     required this.textScaler,
+    this.covered,
   }) : super(repaint: clock);
 
   final ValueNotifier<double> clock;
   final SceneWeather weather;
   final List<SceneHorse> horses;
   final Map<String, _HorseAgent> agents;
+  final ValueListenable<double>? covered;
   final TextScaler textScaler;
 
   static final _labelCache = <String, TextPainter>{};
@@ -293,7 +307,7 @@ class _FarmPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final t = clock.value;
-    final l = SceneLayout(size);
+    final l = SceneLayout(size, covered?.value ?? 0.38);
     canvas.clipRect(Offset.zero & size);
 
     _sky(canvas, l, t);

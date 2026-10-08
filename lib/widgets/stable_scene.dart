@@ -19,11 +19,15 @@ class StableScene extends StatefulWidget {
     required this.weather,
     required this.horses,
     this.onHorseTap,
+    this.covered,
   });
 
   final SceneWeather weather;
   final List<SceneHorse> horses;
   final ValueChanged<Horse>? onHorseTap;
+
+  /// Deel van de hoogte dat onderin door het paneel bedekt is.
+  final ValueListenable<double>? covered;
 
   @override
   State<StableScene> createState() => _StableSceneState();
@@ -58,7 +62,8 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
           final n = math.max(widget.horses.length, 2);
           final i = (d.localPosition.dx / (size.width / n)).floor();
           final y = d.localPosition.dy;
-          if (i >= 0 && i < widget.horses.length && y > size.height * 0.33) {
+          final front = _StablePainter.frontTopFor(size, widget.covered?.value ?? 0.38);
+          if (i >= 0 && i < widget.horses.length && y > front - size.height * 0.03) {
             cb(widget.horses[i].horse);
           }
         },
@@ -68,6 +73,7 @@ class _StableSceneState extends State<StableScene> with SingleTickerProviderStat
             clock: _clock,
             weather: widget.weather,
             horses: widget.horses,
+            covered: widget.covered,
             textScaler: MediaQuery.textScalerOf(context),
           ),
         ),
@@ -82,7 +88,18 @@ class _StablePainter extends CustomPainter {
     required this.weather,
     required this.horses,
     required this.textScaler,
+    this.covered,
   }) : super(repaint: clock);
+
+  /// De onderdeur zakt mee met het paneel, zodat de naambordjes en hoofden
+  /// in beeld blijven; de voorkant van de boxen schuift mee.
+  static double doorTopFor(Size size, double covered) =>
+      (size.height * (1 - covered) - size.height * 0.09)
+          .clamp(size.height * 0.53, size.height * 0.70);
+  static double frontTopFor(Size size, double covered) =>
+      doorTopFor(size, covered) - size.height * 0.17;
+
+  final ValueListenable<double>? covered;
 
   final ValueNotifier<double> clock;
   final SceneWeather weather;
@@ -102,7 +119,8 @@ class _StablePainter extends CustomPainter {
     final w = size.width, h = size.height;
     final night = weather.isNight;
     final kind = weather.kind;
-    final frontTop = h * 0.36, doorTop = h * 0.53;
+    final cov = covered?.value ?? 0.38;
+    final frontTop = frontTopFor(size, cov), doorTop = doorTopFor(size, cov);
     final n = math.max(horses.length, 2);
     final bw = w / n;
     final p = Paint()..isAntiAlias = true;
