@@ -175,7 +175,7 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               const Divider(height: 1, color: AppColors.line),
               _StepRow(
                 icon: Icons.storm,
-                label: 'Harde wind',
+                label: 'Sterke wind',
                 hint: 'vanaf 35 km/u',
                 value: '−${s.windStrong.round()}°',
                 onMinus: () => save(
@@ -194,8 +194,8 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               const Divider(height: 1, color: AppColors.line),
               _StepRow(
                 icon: Icons.house_siding,
-                label: '\'s Nachts op stal',
-                hint: 'warmer dan buiten',
+                label: 'Op stal',
+                hint: 'warmer dan buiten, geen wind of regen',
                 value: '+${s.stable.round()}°',
                 onMinus: () => save(s.copyWith(stable: (s.stable - 1).clamp(0.0, 12.0))),
                 onPlus: () => save(s.copyWith(stable: (s.stable + 1).clamp(0.0, 12.0))),

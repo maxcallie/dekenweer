@@ -726,9 +726,9 @@ class _EmptyHorses extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         const Text(
-          'Ik houd de wei warm tot jouw paarden er zijn. Voeg je paard toe met '
-          'vachtkleur, aftekeningen, of het geschoren is en waar het staat. '
-          'Dan zie je het hierboven grazen en krijg je dekenadvies.',
+          'Ik help je kiezen welke deken je paard nodig heeft. Voeg je paard '
+          'toe met vachtkleur, aftekeningen, of het geschoren is en waar het '
+          'staat. Dan zie je het in de wei of op stal staan en krijg je hier dekenadvies.',
           style: TextStyle(color: AppColors.muted, height: 1.35),
         ),
         const SizedBox(height: 14),
@@ -793,10 +793,10 @@ class _ConditionsGrid extends StatelessWidget {
 
   static String _beaufort(double kmh) {
     if (kmh < 12) return 'zwak';
-    if (kmh < 20) return 'matig';
-    if (kmh < 29) return 'vrij krachtig';
-    if (kmh < 39) return 'krachtig';
-    if (kmh < 50) return 'hard';
+    if (kmh < 29) return 'matig';
+    if (kmh < 39) return 'vrij krachtig';
+    if (kmh < 50) return 'krachtig';
+    if (kmh < 62) return 'hard';
     return 'stormachtig';
   }
 }

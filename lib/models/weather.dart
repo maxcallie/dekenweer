@@ -26,7 +26,7 @@ String describeCode(int code) {
     case 0:
       return 'Onbewolkt';
     case 1:
-      return 'Overwegend zonnig';
+      return 'Overwegend helder';
     case 2:
       return 'Half bewolkt';
     case 3:

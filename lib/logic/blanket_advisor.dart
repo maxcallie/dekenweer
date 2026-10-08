@@ -63,11 +63,13 @@ class BlanketAdvice {
         neckCover: neckCover,
         waterproof: false,
         reasons: reasons,
+        // De overige tips gingen over het advies zelf; bij een vaste keuze
+        // houden we alleen wat over jouw keuze klopt.
         notes: [
           'Dit is je vaste keuze voor op stal: $description. Het advies zou zijn: '
               '${this.level.label.toLowerCase()}'
               '${this.level.wearsBlanket ? ' (${this.level.grams})' : ''}.',
-          ...notes,
+          if (level.wearsBlanket) feelNote,
         ],
         inside: true,
         userChoice: true,
@@ -97,7 +99,14 @@ class BlanketAdvice {
     return extras.isEmpty ? level.label : '${level.label} ${extras.join(' ')}';
   }
 
+  static const feelNote = 'Voel met je hand onder de deken bij de schoft: '
+      'warm en droog is goed, zweterig is te warm.';
+
   String get subtitle {
+    if (userChoice) {
+      return 'Jouw vaste keuze voor op stal'
+          '${level.wearsBlanket ? ' · ${level.grams}' : ''}';
+    }
     if (!level.wearsBlanket) return 'Je paard redt zich prima met zijn eigen vacht';
     final parts = [
       level.grams,
@@ -226,7 +235,13 @@ class BlanketAdvisor {
 
     // --- Aandachtspunten ---------------------------------------------
     if (!w.isNight && w.maxTemp - w.minTemp >= 9 && level.wearsBlanket) {
-      final warmLevel = levelFor(horse.clip, eff + (w.maxTemp - base));
+      var warmLevel = levelFor(horse.clip, eff + (w.maxTemp - base));
+      // Zelfde regel als hierboven: zonder regen geen regendeken voor een
+      // ongeschoren paard, en op stal nooit.
+      if (warmLevel == BlanketLevel.rainSheet &&
+          (stabled || (horse.clip == ClipType.none && !outsideWet))) {
+        warmLevel = BlanketLevel.none;
+      }
       if (warmLevel.index < level.index) {
         notes.add(
             'Het wordt overdag ${w.maxTemp.round()}°C. Kun je wisselen, dan is '
@@ -235,8 +250,7 @@ class BlanketAdvisor {
       }
     }
     if (level.wearsBlanket) {
-      notes.add('Voel met je hand onder de deken bij de schoft: '
-          'warm en droog is goed, zweterig is te warm.');
+      notes.add(BlanketAdvice.feelNote);
     }
     if (stabled && level.wearsBlanket) {
       notes.add('Op stal volstaat een staldeken; waterdicht is niet nodig.');

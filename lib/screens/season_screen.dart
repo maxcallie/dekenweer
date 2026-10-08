@@ -48,8 +48,10 @@ class SeasonScreen extends StatelessWidget {
           const Text(
             'Staan je paarden binnen, dan rekent het advies met de stal: '
             'warmer, geen wind en geen regen, en een staldeken is genoeg. '
-            'Per paard kies je welke deken het op stal krijgt (Mijn stal → paard). '
-            'Paarden die op "Altijd buiten" staan, volgen dit schema niet.',
+            'Per paard kies je welke deken het op stal krijgt '
+            '(Mijn stal → Paarden → je paard → Deken op stal). '
+            'Alleen paarden met "Volgt het stalschema" gaan mee met dit schema; '
+            'paarden die altijd buiten staan (met of zonder schuilstal) niet.',
             style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.4),
           ),
         ],

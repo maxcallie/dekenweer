@@ -69,7 +69,7 @@ const legNames = ['Linksvoor', 'Rechtsvoor', 'Linksachter', 'Rechtsachter'];
 
 enum HorseType {
   pony('Pony', 'Shetlander, Welsh, Fjord e.d.'),
-  coldblood('Koudbloed', 'Friese, Haflinger, trekpaard'),
+  coldblood('Koudbloed', 'Fries, Haflinger, trekpaard'),
   warmblood('Warmbloed', 'KWPN, sportpaard'),
   baroque('Barok', 'Spanjaard (PRE), Lusitano, Andalusiër'),
   hotblood('Volbloed', 'Arabier, Engelse volbloed');

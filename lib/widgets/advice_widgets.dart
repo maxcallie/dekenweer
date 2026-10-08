@@ -334,7 +334,11 @@ class _ClosetCard extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           Text(
-            p.matches
+            advice.userChoice
+                ? 'Je vaste keuze voor op stal. Het advies is '
+                    '${(advice.advisedLevel ?? level).label.toLowerCase()}'
+                    '${(advice.advisedLevel ?? level).wearsBlanket ? ' (${(advice.advisedLevel ?? level).grams})' : ''}.'
+                : p.matches
                 ? 'Past binnen het advies (${level.grams}).'
                 : 'Dit is de best passende deken die je hebt; het advies is ${level.grams}.',
             style: const TextStyle(fontSize: 13, height: 1.35),

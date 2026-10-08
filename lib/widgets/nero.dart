@@ -2,18 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../models/horse.dart';
 import '../ui.dart';
-
-/// Nero als paard in de wei (zolang je zelf nog geen paarden hebt).
-final neroHorse = Horse(
-  id: '__nero__',
-  name: 'Nero',
-  coat: CoatColor.chestnut,
-  blaze: Blaze.wide,
-  legs: [LegMark.stocking, LegMark.none, LegMark.stocking, LegMark.stocking],
-  blanketColorValue: 0xFF5E5A52,
-);
 
 /// Nero – de mascotte van Dekenweer: een vos met een brede bles, een roze
 /// snoet met grijze vlekjes en een donkerblauw halster.
