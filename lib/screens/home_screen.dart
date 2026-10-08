@@ -234,9 +234,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           morning: h >= 6 && h < 12);
     }
     final phase = app.selectedPhase;
+    // "Avond & nacht" van vandaag: tot 21:00 het gouden uur, daarna nacht.
+    final now = DateTime.now();
+    final golden = phase == DayPhase.evening &&
+        dateOnly(app.selectedDay) == dateOnly(now) &&
+        now.hour >= 6 &&
+        now.hour < 21;
     return SceneWeather(
       kind: w.kind,
-      isNight: phase.isNight,
+      isNight: phase.isNight && !golden,
+      golden: golden,
       wind: (w.maxWind / 45).clamp(0.0, 1.0),
       temp: phase.isNight ? w.minTemp : w.avgTemp,
       morning: phase == DayPhase.morning,

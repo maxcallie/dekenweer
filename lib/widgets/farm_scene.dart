@@ -20,10 +20,14 @@ class SceneWeather {
     required this.wind,
     required this.temp,
     this.morning = false,
+    this.golden = false,
   });
 
   final WeatherKind kind;
   final bool isNight;
+
+  /// Gouden uur: de avond voordat het donker is (lage, warme zon).
+  final bool golden;
 
   /// Ochtendlicht: warme lucht en een lage zon.
   final bool morning;
@@ -41,10 +45,11 @@ class SceneWeather {
       other.isNight == isNight &&
       other.wind == wind &&
       other.temp == temp &&
-      other.morning == morning;
+      other.morning == morning &&
+      other.golden == golden;
 
   @override
-  int get hashCode => Object.hash(kind, isNight, wind, temp, morning);
+  int get hashCode => Object.hash(kind, isNight, wind, temp, morning, golden);
 }
 
 /// Een paard dat getekend wordt, met het advies dat bij het gekozen moment hoort.
@@ -86,6 +91,9 @@ class SceneLayout {
 }
 
 enum _Activity { graze, walk, stand, roll, play, groom }
+
+/// Lichtsfeer van de wei.
+enum _Light { morning, day, golden, night }
 
 double _ease(double t) => Curves.easeInOut.transform(t.clamp(0.0, 1.0));
 
@@ -543,14 +551,16 @@ class _FarmPainter extends CustomPainter {
   static final _labelCache = <String, TextPainter>{};
 
   // Vaste "willekeurige" posities zodat de scène niet flikkert.
-  static final List<Offset> _tufts = () {
-    final r = math.Random(7);
-    return List.generate(46, (_) => Offset(r.nextDouble(), r.nextDouble()));
-  }();
   static final List<List<double>> _particles = () {
     final r = math.Random(11);
     return List.generate(
         220, (_) => [r.nextDouble(), r.nextDouble(), r.nextDouble()]);
+  }();
+  /// Penseelstreken in het gras: [x, y, lengte, licht/donker].
+  static final List<List<double>> _strokes = () {
+    final r = math.Random(12);
+    return List.generate(
+        320, (_) => [r.nextDouble(), math.pow(r.nextDouble(), 0.8).toDouble(), r.nextDouble(), r.nextDouble()]);
   }();
   static final List<Offset> _stars = () {
     final r = math.Random(3);
@@ -579,59 +589,73 @@ class _FarmPainter extends CustomPainter {
     _pasture(canvas, l, t);
     _fence(canvas, l);
     _props(canvas, l);
-    _horses(canvas, l, t);
-    if (!_night && weather.morning) {
-      // zacht ochtendlicht over het landschap
-      canvas.drawRect(Rect.fromLTRB(0, l.horizon - l.h * 0.12, l.w, l.h),
-          Paint()..color = const Color(0x1AFFC88C));
-    }
     if (_night) {
+      // stal, hek en spullen in het donker; de paarden krijgen hun eigen tint
       canvas.drawRect(
         Rect.fromLTRB(0, l.horizon - l.h * 0.12, l.w, l.h),
-        Paint()..color = const Color(0xFF0A1430).withValues(alpha: 0.38),
+        Paint()..color = const Color(0xFF0A1430).withValues(alpha: 0.22),
       );
       _stableGlow(canvas, l);
     }
+    if (_light == _Light.morning && _kind != WeatherKind.snow) _mist(canvas, l);
+    _horses(canvas, l, t);
+    _glints(canvas, l, t);
     _weatherFx(canvas, l, t);
     _labels(canvas, l);
   }
 
   // ---- Lucht -------------------------------------------------------------
+  /// Lichtsfeer van de scène.
+  _Light get _light => _night
+      ? _Light.night
+      : weather.golden
+          ? _Light.golden
+          : weather.morning
+              ? _Light.morning
+              : _Light.day;
+
+  bool get _open => _kind == WeatherKind.clear || _kind == WeatherKind.partlyCloudy;
+
+  /// Warme gloed over grijze luchten bij ochtend en gouden uur.
+  Color _warm(Color c) => switch (_light) {
+        _Light.morning => Color.lerp(c, const Color(0xFFEFC9A8), 0.18)!,
+        _Light.golden => Color.lerp(c, const Color(0xFFE9A878), 0.28)!,
+        _ => c,
+      };
+
   void _sky(Canvas canvas, SceneLayout l, double t) {
     final List<Color> c;
-    if (_night) {
+    if (_open) {
+      c = switch (_light) {
+        _Light.morning => const [Color(0xFF9DC3E0), Color(0xFFF2D0A8), Color(0xFFFBE6CC)],
+        _Light.day => const [Color(0xFF5FA9DF), Color(0xFFA8D4EE), Color(0xFFEAF2DA)],
+        _Light.golden => const [Color(0xFFE3A26C), Color(0xFFF6CB8C), Color(0xFFFCE6BC)],
+        _Light.night => const [Color(0xFF0E1430), Color(0xFF242C58), Color(0xFF433F68)],
+      };
+    } else if (_night) {
       c = switch (_kind) {
-        WeatherKind.clear || WeatherKind.partlyCloudy => const [
-            Color(0xFF0B1630), Color(0xFF243A66)],
-        WeatherKind.snow => const [Color(0xFF1E2838), Color(0xFF4A5A70)],
-        _ => const [Color(0xFF151C28), Color(0xFF364252)],
+        WeatherKind.snow => const [Color(0xFF1E2838), Color(0xFF3A4660), Color(0xFF4A5A70)],
+        _ => const [Color(0xFF151C28), Color(0xFF283240), Color(0xFF364252)],
       };
     } else {
-      c = switch (_kind) {
-        WeatherKind.clear => const [Color(0xFF5FAEE6), Color(0xFFCDEBF7)],
-        WeatherKind.partlyCloudy => const [Color(0xFF7DB8E0), Color(0xFFDCEEF5)],
-        WeatherKind.cloudy => const [Color(0xFF98AABA), Color(0xFFD9E0E4)],
-        WeatherKind.fog => const [Color(0xFFB4BEC6), Color(0xFFE6E9EB)],
-        WeatherKind.drizzle => const [Color(0xFF8396A6), Color(0xFFC6D0D7)],
-        WeatherKind.rain => const [Color(0xFF6A7F90), Color(0xFFB5C2CC)],
-        WeatherKind.storm => const [Color(0xFF3A4757), Color(0xFF7A8896)],
-        WeatherKind.snow => const [Color(0xFFAFC0CF), Color(0xFFEAEFF3)],
-      };
+      c = [
+        for (final x in switch (_kind) {
+          WeatherKind.cloudy => const [Color(0xFF98AABA), Color(0xFFC2CCD3), Color(0xFFD9E0E4)],
+          WeatherKind.fog => const [Color(0xFFB4BEC6), Color(0xFFD2D8DC), Color(0xFFE6E9EB)],
+          WeatherKind.drizzle => const [Color(0xFF8396A6), Color(0xFFA8B4BD), Color(0xFFC6D0D7)],
+          WeatherKind.rain => const [Color(0xFF6E7880), Color(0xFF9AA2A6), Color(0xFFC2C3BC)],
+          WeatherKind.storm => const [Color(0xFF3A4757), Color(0xFF5C6876), Color(0xFF7A8896)],
+          _ => const [Color(0xFFA9B8C8), Color(0xFFD2DAE2), Color(0xFFEEF1F3)],
+        })
+          _warm(x)
+      ];
     }
-    // ochtend: warmere lucht (bij helder of half bewolkt weer het sterkst)
-    final List<Color> sky = !_night && weather.morning
-        ? [
-            Color.lerp(c[0], const Color(0xFF8DB9E2), 0.6)!,
-            Color.lerp(c[1], const Color(0xFFF9D8B2),
-                _kind == WeatherKind.clear || _kind == WeatherKind.partlyCloudy ? 0.9 : 0.45)!,
-          ]
-        : c;
     final rect = Rect.fromLTWH(0, 0, l.w, l.horizon + 4);
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.Gradient.linear(
-            rect.topCenter, rect.bottomCenter, sky, const [0.0, 1.0]),
+            rect.topCenter, rect.bottomCenter, c, const [0.0, 0.55, 1.0]),
     );
 
     // sterren: heldere nacht vol, half bewolkt een deel, anders geen
@@ -647,62 +671,85 @@ class _FarmPainter extends CustomPainter {
       for (var i = 0; i < starCount; i++) {
         final s = _stars[i];
         final tw = 0.5 + 0.5 * math.sin(t * 1.5 + i * 1.7);
-        p.color = Colors.white.withValues(alpha: 0.35 + 0.55 * tw);
+        p.color = const Color(0xFFFFFFF0).withValues(alpha: 0.3 + 0.6 * tw);
         canvas.drawCircle(
-            Offset(s.dx * l.w, s.dy * l.horizon * 0.8), 0.8 + (i % 3) * 0.5, p);
+            Offset(s.dx * l.w, s.dy * l.horizon * 0.8), 0.6 + (i % 3) * 0.45, p);
+      }
+    }
+
+    // dunne, warme wolkenstrepen bij een open lucht
+    if (_open) {
+      final streak = Paint()
+        ..color = switch (_light) {
+          _Light.night => const Color(0x40788CB4),
+          _Light.day => const Color(0x59FFFFFF),
+          _ => const Color(0x80FFF0D7),
+        };
+      final drift = t * (2 + weather.wind * 10);
+      for (final (fx, fy, fw) in const [(0.05, 0.13, 0.46), (0.38, 0.20, 0.50), (0.15, 0.27, 0.32)]) {
+        final x = (fx * l.w + drift) % (l.w * 1.4) - l.w * 0.2;
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(x, l.h * fy, l.w * fw, 7), const Radius.circular(4)),
+            streak);
       }
     }
   }
 
+  /// Positie van de zon (laag bij ochtend en gouden uur) of maan.
+  Offset _sunPos(SceneLayout l) => switch (_light) {
+        _Light.morning => Offset(l.w * 0.84, l.h * 0.29),
+        _Light.golden => Offset(l.w * 0.82, l.h * 0.31),
+        _Light.night => Offset(l.w * 0.80, l.h * 0.22),
+        _Light.day => Offset(l.w * 0.80, l.h * 0.21),
+      };
+
   void _sunOrMoon(Canvas canvas, SceneLayout l, double t) {
-    // Zon/maan staan rechts naast de temperatuur, onder de datumstrip;
-    // 's ochtends staat de zon lager.
-    final c = weather.morning && !_night
-        ? Offset(l.w * 0.86, l.h * 0.265)
-        : Offset(l.w * 0.80, l.h * 0.24);
-    final r = math.max(22.0, l.w * 0.055);
-    final open = _kind == WeatherKind.clear || _kind == WeatherKind.partlyCloudy;
-    if (!open) return; // achter een dicht wolkendek zie je geen zon of maan
-    if (_night) {
-      canvas.drawCircle(c, r * 2.2,
-          Paint()
-            ..shader = ui.Gradient.radial(c, r * 2.2, [
-              const Color(0x33FFF6D8),
-              const Color(0x00FFF6D8),
-            ]));
-      canvas.drawCircle(c, r * 0.8, Paint()..color = const Color(0xFFF4EED8));
-      // maansikkel: hap eruit met de luchtkleur
-      canvas.drawCircle(c + Offset(r * 0.38, -r * 0.18), r * 0.68,
-          Paint()..color = const Color(0xFF1B2D55));
+    final c = _sunPos(l);
+    final r = math.max(20.0, l.w * 0.055);
+    if (!_open) {
+      // achter het wolkendek: alleen een warme gloed bij ochtend/avond
+      if (_light == _Light.golden || _light == _Light.morning) {
+        canvas.drawCircle(
+            c,
+            l.w * 0.5,
+            Paint()
+              ..blendMode = BlendMode.plus
+              ..shader = ui.Gradient.radial(
+                  c, l.w * 0.5, [const Color(0x30FFC88C), const Color(0x00FFC88C)]));
+      }
       return;
     }
-    const visible = 1.0;
-    // stralenkrans
-    canvas.save();
-    canvas.translate(c.dx, c.dy);
-    canvas.rotate(t * 0.08);
-    final ray = Paint()
-      ..color = const Color(0xFFFFF3B0).withValues(alpha: 0.35 * visible);
-    for (var i = 0; i < 12; i++) {
-      canvas.rotate(math.pi / 6);
-      final path = Path()
-        ..moveTo(-r * 0.12, r * 1.25)
-        ..lineTo(r * 0.12, r * 1.25)
-        ..lineTo(0, r * (1.75 + 0.15 * math.sin(t * 2 + i)))
-        ..close();
-      canvas.drawPath(path, ray);
+    if (_night) {
+      canvas.drawCircle(c, r * 4,
+          Paint()
+            ..shader = ui.Gradient.radial(
+                c, r * 4, [const Color(0x40DCE1FF), const Color(0x00DCE1FF)]));
+      canvas.drawCircle(c, r * 0.8, Paint()..color = const Color(0xFFF4EFD8));
+      final crater = Paint()..color = const Color(0x80C8C3AA);
+      canvas.drawCircle(c + Offset(-r * 0.25, -r * 0.2), r * 0.2, crater);
+      canvas.drawCircle(c + Offset(r * 0.3, r * 0.25), r * 0.15, crater);
+      return;
     }
-    canvas.restore();
-    canvas.drawCircle(c, r * 3,
-        Paint()
-          ..shader = ui.Gradient.radial(c, r * 3, [
-            const Color(0xFFFFF4C2).withValues(alpha: 0.55 * visible),
-            const Color(0x00FFF4C2),
-          ]));
+    final (Color core, Color glow) = switch (_light) {
+      _Light.morning => (const Color(0xFFFFF4D8), const Color(0xFFFFE1AA)),
+      _Light.golden => (const Color(0xFFFFF4D2), const Color(0xFFFFD28C)),
+      _ => (const Color(0xFFFFFBEA), const Color(0xFFFFF8DC)),
+    };
+    // grote, zachte gloed (licht wordt opgeteld)
+    final reach = l.w * 0.62;
     canvas.drawCircle(
-        c, r, Paint()..color = (weather.morning ? const Color(0xFFFFB84D) : const Color(0xFFFFD34D)).withValues(alpha: visible));
-    canvas.drawCircle(c, r * 0.8,
-        Paint()..color = (weather.morning ? const Color(0xFFFFCB73) : const Color(0xFFFFE27A)).withValues(alpha: visible));
+        c,
+        reach,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = ui.Gradient.radial(c, reach, [
+            glow.withValues(alpha: 0.85),
+            glow.withValues(alpha: 0.30),
+            glow.withValues(alpha: 0),
+          ], const [0.0, 0.25, 1.0]));
+    final pulse = 1 + 0.02 * math.sin(t * 1.2);
+    canvas.drawCircle(c, r * pulse, Paint()..color = core);
   }
 
   void _clouds(Canvas canvas, SceneLayout l, double t) {
@@ -711,7 +758,12 @@ class _FarmPainter extends CustomPainter {
         return; // strakblauw (of een heldere sterrenhemel)
       case WeatherKind.partlyCloudy:
         // een paar losse wolken, boven de zon zodat die vrij blijft
-        final color = _night ? const Color(0xFF3B4866) : Colors.white;
+        final color = switch (_light) {
+          _Light.night => const Color(0xFF3B4866),
+          _Light.golden => const Color(0xFFFFE6C8),
+          _Light.morning => const Color(0xFFFFF0DE),
+          _Light.day => Colors.white,
+        };
         final speed = 5 + weather.wind * 30;
         final span = l.w + 240;
         for (var i = 0; i < 3; i++) {
@@ -756,9 +808,7 @@ class _FarmPainter extends CustomPainter {
         ),
     };
     var c = _night ? night : day;
-    if (!_night && weather.morning) {
-      c = [for (final x in c) Color.lerp(x, const Color(0xFFF0CDB0), 0.15)!];
-    }
+    if (!_night) c = [for (final x in c) _warm(x)];
     final k = math.max(1.0, l.w / 420);
     final bottom = l.horizon * 0.78;
     final drift = t * (4 + weather.wind * 30);
@@ -847,6 +897,19 @@ class _FarmPainter extends CustomPainter {
 
   void _hills(Canvas canvas, SceneLayout l) {
     final hz = l.horizon;
+    final (Color farC, Color nearC) = switch (_light) {
+      _Light.morning => (const Color(0xFFB8A7B8), const Color(0xFF9C9A86)),
+      _Light.day => (const Color(0xFF9DB9B5), const Color(0xFF8EAA74)),
+      _Light.golden => (const Color(0xFFC99A86), const Color(0xFFA9876A)),
+      _Light.night => (const Color(0xFF2B2F4A), const Color(0xFF262E3A)),
+    };
+    final grey = _open ? 0.0 : (_night ? 0.15 : 0.3);
+    Color tone(Color c) {
+      var x = Color.lerp(c, _night ? const Color(0xFF2A303A) : const Color(0xFFB9BFC2), grey)!;
+      if (_kind == WeatherKind.fog) x = Color.lerp(x, const Color(0xFFDDE1E4), 0.5)!;
+      return _groundTint(x);
+    }
+
     final far = Path()
       ..moveTo(0, hz - l.h * 0.045)
       ..quadraticBezierTo(l.w * 0.3, hz - l.h * 0.10, l.w * 0.6, hz - l.h * 0.05)
@@ -854,12 +917,7 @@ class _FarmPainter extends CustomPainter {
       ..lineTo(l.w, hz + 2)
       ..lineTo(0, hz + 2)
       ..close();
-    final fogged = _kind == WeatherKind.fog ? 0.5 : 0.0;
-    canvas.drawPath(
-        far,
-        Paint()
-          ..color = Color.lerp(_groundTint(const Color(0xFF8DB879)),
-              const Color(0xFFDDE3E6), fogged)!);
+    canvas.drawPath(far, Paint()..color = tone(farC));
     final near = Path()
       ..moveTo(0, hz - l.h * 0.01)
       ..quadraticBezierTo(l.w * 0.25, hz - l.h * 0.04, l.w * 0.55, hz - l.h * 0.012)
@@ -867,55 +925,33 @@ class _FarmPainter extends CustomPainter {
       ..lineTo(l.w, hz + 4)
       ..lineTo(0, hz + 4)
       ..close();
-    canvas.drawPath(near, Paint()..color = _groundTint(const Color(0xFF79AA62)));
+    canvas.drawPath(near, Paint()..color = tone(nearC));
   }
 
+  /// Slanke populieren aan de horizon, als silhouet tegen het licht.
   void _trees(Canvas canvas, SceneLayout l, double t) {
-    final sway = math.sin(t * 1.6) * 0.03 * (0.3 + weather.wind * 1.6);
+    final sway = math.sin(t * 1.6) * 0.025 * (0.3 + weather.wind * 1.6);
     final k = math.min(l.w, l.h * 0.62) / 400;
-    void round(double x, double scale) {
-      final base = Offset(x, l.horizon + 2);
+    final leaf = _groundTint(switch (_light) {
+      _Light.morning => const Color(0xFF6F6A5A),
+      _Light.day => const Color(0xFF5E7F4A),
+      _Light.golden => const Color(0xFF7A5F48),
+      _Light.night => const Color(0xFF151A24),
+    });
+    final snowy = _kind == WeatherKind.snow || weather.frost;
+    for (final (fx, h, w) in const [(0.05, 74.0, 9.0), (0.11, 60.0, 8.0), (0.60, 54.0, 8.0), (0.655, 44.0, 7.0)]) {
       canvas.save();
-      canvas.translate(base.dx, base.dy);
+      canvas.translate(l.w * fx, l.horizon + 2);
       canvas.rotate(sway);
-      canvas.scale(scale * k);
-      canvas.drawRect(const Rect.fromLTRB(-4, -40, 4, 0),
-          Paint()..color = const Color(0xFF6B4A31));
-      final leaf = _groundTint(const Color(0xFF4E8F3F));
-      final leafHi = _groundTint(const Color(0xFF66A651));
-      canvas.drawCircle(const Offset(-14, -50), 20, Paint()..color = leaf);
-      canvas.drawCircle(const Offset(14, -52), 20, Paint()..color = leaf);
-      canvas.drawCircle(const Offset(0, -68), 24, Paint()..color = leaf);
-      canvas.drawCircle(const Offset(-6, -72), 12, Paint()..color = leafHi);
-      canvas.restore();
-    }
-
-    void pine(double x, double scale) {
-      canvas.save();
-      canvas.translate(x, l.horizon + 2);
-      canvas.rotate(sway * 0.6);
-      canvas.scale(scale * k);
-      canvas.drawRect(const Rect.fromLTRB(-3, -14, 3, 0),
-          Paint()..color = const Color(0xFF5E4330));
-      final c = _groundTint(const Color(0xFF2F6E46));
-      for (var i = 0; i < 3; i++) {
-        final y = -14.0 - i * 18;
-        final w = 24.0 - i * 6;
-        canvas.drawPath(
-            Path()
-              ..moveTo(-w, y)
-              ..lineTo(w, y)
-              ..lineTo(0, y - 30)
-              ..close(),
-            Paint()..color = c);
+      canvas.scale(k);
+      canvas.drawOval(Rect.fromCenter(center: Offset(0, -h / 2), width: w * 2, height: h),
+          Paint()..color = leaf);
+      if (snowy) {
+        canvas.drawOval(Rect.fromCenter(center: Offset(-1.5, -h + 9), width: w * 1.1, height: 18),
+            Paint()..color = Colors.white.withValues(alpha: _kind == WeatherKind.snow ? 0.95 : 0.5));
       }
       canvas.restore();
     }
-
-    round(l.w * 0.07, 1.0);
-    round(l.w * 0.19, 0.8);
-    pine(l.w * 0.52, 0.9);
-    pine(l.w * 0.585, 0.7);
   }
 
   Rect _stableRect(SceneLayout l) {
@@ -1016,68 +1052,94 @@ class _FarmPainter extends CustomPainter {
 
   void _pasture(Canvas canvas, SceneLayout l, double t) {
     final rect = Rect.fromLTRB(0, l.horizon, l.w, l.h);
-    final top = _groundTint(const Color(0xFF8CC26B));
-    final bottom = _groundTint(const Color(0xFF5E9E4B));
+    var g = switch (_light) {
+      _Light.morning => const [Color(0xFFB9C46A), Color(0xFF86A24A), Color(0xFF58803A)],
+      _Light.day => const [Color(0xFFA8C860), Color(0xFF7EA647), Color(0xFF4F7F36)],
+      _Light.golden => const [Color(0xFFB8B05A), Color(0xFF8E9A45), Color(0xFF5E7432)],
+      _Light.night => const [Color(0xFF3E5236), Color(0xFF31432B), Color(0xFF22301F)],
+    };
+    if (!_open && !_night) {
+      g = [for (final c in g) Color.lerp(c, const Color(0xFF6E8452), 0.35)!];
+    }
     canvas.drawRect(
         rect,
         Paint()
-          ..shader = ui.Gradient.linear(Offset(0, l.horizon),
-              Offset(0, l.pastureBottom + l.h * 0.1), [top, bottom]));
-    // maaibanen
-    final stripe = Paint()..color = Colors.white.withValues(alpha: 0.05);
-    for (var i = 0; i < 6; i++) {
-      final y = l.horizon + (l.h - l.horizon) * i / 6;
-      canvas.drawRect(Rect.fromLTWH(0, y, l.w, (l.h - l.horizon) / 12), stripe);
-    }
+          ..shader = ui.Gradient.linear(Offset(0, l.horizon), Offset(0, l.h),
+              [for (final c in g) _groundTint(c)], const [0.0, 0.4, 1.0]));
     // plassen bij regen
     if (_wet) {
       final puddle = Paint()
-        ..color = const Color(0xFFA8C4D6).withValues(alpha: _night ? 0.35 : 0.6);
+        ..color = const Color(0xFFBECDD7).withValues(alpha: _night ? 0.3 : 0.5);
       canvas.drawOval(
           Rect.fromCenter(
               center: Offset(l.w * 0.3, l.pastureBottom + l.h * 0.01),
-              width: l.w * 0.16,
-              height: l.h * 0.012),
+              width: l.w * 0.3,
+              height: l.h * 0.014),
           puddle);
       canvas.drawOval(
           Rect.fromCenter(
               center: Offset(l.w * 0.72, l.pastureTop + l.h * 0.03),
-              width: l.w * 0.1,
-              height: l.h * 0.008),
+              width: l.w * 0.2,
+              height: l.h * 0.01),
           puddle);
     }
-    // grasplukjes die meewaaien
-    final grass = Paint()
-      ..color = _groundTint(const Color(0xFF4C8A3B))
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round;
+    // penseelstreken: lichte en donkere sprietjes die meewaaien
+    final snowy = _kind == WeatherKind.snow;
+    final light = Paint()
+      ..strokeCap = StrokeCap.round
+      ..color = snowy
+          ? const Color(0x99FFFFFF)
+          : switch (_light) {
+              _Light.night => const Color(0x33789670),
+              _Light.day => const Color(0x4DDCF0A0),
+              _ => const Color(0x59F0D778),
+            };
+    final dark = Paint()
+      ..strokeCap = StrokeCap.round
+      ..color = snowy ? const Color(0x5996AAC3) : const Color(0x55283C19);
     final sway = 0.15 + weather.wind * 0.9;
-    for (var i = 0; i < _tufts.length; i++) {
-      final p = _tufts[i];
-      final y = ui.lerpDouble(l.horizon + l.h * 0.03, l.h * 0.66, p.dy)!;
-      final x = p.dx * l.w;
-      final s = 0.6 + (y - l.horizon) / (l.h * 0.3);
-      final bend = math.sin(t * 2.2 + i) * 3 * sway * s;
-      for (var b = -1; b <= 1; b++) {
-        canvas.drawLine(Offset(x + b * 2.5 * s, y),
-            Offset(x + b * 4 * s + bend, y - 7 * s), grass);
-      }
+    final n = snowy ? _strokes.length ~/ 3 : _strokes.length;
+    for (var i = 0; i < n; i++) {
+      final q = _strokes[i];
+      final y = l.horizon + l.h * 0.012 + q[1] * (l.h - l.horizon);
+      final depth = (y - l.horizon) / (l.h - l.horizon);
+      final len = (4 + q[2] * 8) * (0.5 + depth);
+      final x = q[0] * l.w;
+      final bend = math.sin(t * 2.2 + i * 0.7) * 2.2 * sway * (0.5 + depth);
+      final p = q[3] < 0.5 ? light : dark;
+      p.strokeWidth = 1 + q[2] * 1.4 * depth;
+      canvas.drawLine(Offset(x, y), Offset(x + (q[3] - 0.3) * 3 + bend, y - len), p);
     }
   }
 
+  /// Houten hek met licht doorbuigende latten.
   void _fence(Canvas canvas, SceneLayout l) {
     final y = l.horizon + l.h * 0.03;
     final k = math.min(l.w, l.h * 0.62) / 400;
-    final postH = 26 * k;
-    final wood = Paint()..color = const Color(0xFFF3EDE2);
-    final shadow = Paint()..color = const Color(0xFFCFC5B4);
-    for (final ry in [y - postH * 0.75, y - postH * 0.35]) {
-      canvas.drawRect(Rect.fromLTWH(0, ry, l.w, 3.2 * k), wood);
-      canvas.drawRect(Rect.fromLTWH(0, ry + 3.2 * k, l.w, 1 * k), shadow);
+    final postH = 28 * k;
+    final wood = Paint()
+      ..color = _night ? const Color(0xFF3A2C20) : const Color(0xFF6B4A30)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    wood.strokeWidth = 3 * k;
+    for (final ry in [y - postH * 0.72, y - postH * 0.32]) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(0, ry)
+            ..quadraticBezierTo(l.w / 2, ry - 5 * k, l.w, ry - 1 * k),
+          wood);
     }
-    for (var x = 8.0; x < l.w; x += 48 * k) {
-      canvas.drawRect(Rect.fromLTWH(x, y - postH, 4.5 * k, postH), wood);
-      canvas.drawRect(Rect.fromLTWH(x + 3.5 * k, y - postH, 1 * k, postH), shadow);
+    wood.strokeWidth = 5 * k;
+    final snow = Paint()..color = Colors.white.withValues(alpha: 0.95);
+    for (var x = 18 * k; x < l.w; x += 56 * k) {
+      canvas.drawLine(Offset(x, y - postH), Offset(x, y + 2 * k), wood);
+      if (_kind == WeatherKind.snow) {
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromCenter(center: Offset(x, y - postH - 1 * k), width: 9 * k, height: 4 * k),
+                Radius.circular(2 * k)),
+            snow);
+      }
     }
   }
 
@@ -1123,6 +1185,24 @@ class _FarmPainter extends CustomPainter {
       final p = l.horsePos(a.x, a.d);
       final s = l.horseScale(a.d);
       if (a.dusty) _dust(canvas, p, s, t, a);
+      // lange schaduw, weg van de lage zon
+      final long = _open && !_night && a.down < 0.5;
+      if (long) {
+        final reach = switch (_light) {
+          _Light.golden => 1.0,
+          _Light.morning => 0.8,
+          _ => 0.25,
+        };
+        canvas.drawOval(
+            Rect.fromCenter(
+                center: Offset(p.dx - 46 * s * reach, p.dy + 1),
+                width: (90 + 60 * reach) * s,
+                height: 9 * s),
+            Paint()..color = const Color(0xFF3C2828).withValues(alpha: 0.22));
+      }
+      // randlicht van de zon (of de stallamp) en een tint voor de sfeer
+      final bounds = Rect.fromLTRB(p.dx - 95 * s, p.dy - 135 * s, p.dx + 95 * s, p.dy + 12 * s);
+      canvas.saveLayer(bounds, Paint());
       canvas.save();
       // uitschudden na het rollen: snel heen en weer
       final jitter = a.shake * math.sin(t * 55) * 1.6 * s;
@@ -1145,6 +1225,76 @@ class _FarmPainter extends CustomPainter {
         ),
       );
       canvas.restore();
+      _horseLight(canvas, bounds);
+      canvas.restore();
+    }
+  }
+
+  /// Warm randlicht aan de zonkant en een sfeertint, alleen over het paard.
+  void _horseLight(Canvas canvas, Rect b) {
+    final (Color rim, Color tint) = switch (_light) {
+      _ when !_open && !_night => (const Color(0x26DCE6F0), const Color(0x26465A6E)),
+      _Light.golden => (const Color(0x80FFBE6E), const Color(0x1AFFAA5A)),
+      _Light.morning => (const Color(0x73FFC88C), const Color(0x14FFBE82)),
+      _Light.day => (const Color(0x40FFF0C8), const Color(0x00000000)),
+      _Light.night => (const Color(0x59FFBE6E), const Color(0x73141E46)),
+    };
+    final sun = b.right; // zon (en stal) staan rechts
+    canvas.drawRect(
+        b,
+        Paint()
+          ..blendMode = BlendMode.srcATop
+          ..shader = ui.Gradient.linear(Offset(sun, 0), Offset(b.left + b.width * 0.45, 0),
+              [rim, rim.withValues(alpha: 0)]));
+    if (tint.a > 0) {
+      canvas.drawRect(b, Paint()..blendMode = BlendMode.srcATop..color = tint);
+    }
+  }
+
+  /// Ochtendmist in banen over de wei.
+  void _mist(Canvas canvas, SceneLayout l) {
+    for (final (fy, a) in const [(0.0, 0.5), (0.06, 0.32), (0.12, 0.2)]) {
+      final y = l.horizon + l.h * fy;
+      final r = Rect.fromLTRB(0, y - l.h * 0.03, l.w, y + l.h * 0.03);
+      canvas.drawRect(
+          r,
+          Paint()
+            ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, [
+              const Color(0x00FFF0E1),
+              const Color(0xFFFFF0E1).withValues(alpha: a),
+              const Color(0x00FFF0E1),
+            ], const [0.0, 0.5, 1.0]));
+    }
+  }
+
+  /// Gouden stofjes in het zonlicht, of vuurvliegjes op een zomernacht.
+  void _glints(Canvas canvas, SceneLayout l, double t) {
+    if (!_open) return;
+    if (_night) {
+      if (weather.temp < 12) return;
+      for (var i = 0; i < 12; i++) {
+        final q = _particles[i + 60];
+        final x = (q[0] * l.w + math.sin(t * 0.4 + i) * 18) % l.w;
+        final y = l.horizon + l.h * 0.04 + q[1] * (l.h - l.horizon) * 0.7 + math.cos(t * 0.5 + i) * 8;
+        final on = (0.5 + 0.5 * math.sin(t * (1 + q[2]) + i * 2)).clamp(0.0, 1.0);
+        canvas.drawCircle(
+            Offset(x, y),
+            7,
+            Paint()
+              ..blendMode = BlendMode.plus
+              ..shader = ui.Gradient.radial(Offset(x, y), 7,
+                  [const Color(0xFFFFE68C).withValues(alpha: 0.9 * on), const Color(0x00FFE68C)]));
+      }
+      return;
+    }
+    if (_light == _Light.day) return;
+    final p = Paint()..blendMode = BlendMode.plus;
+    for (var i = 0; i < 36; i++) {
+      final q = _particles[i + 80];
+      final x = (q[0] * l.w + t * (4 + q[2] * 6)) % l.w;
+      final y = l.h * 0.3 + (q[1] * l.h * 0.5 + math.sin(t * 0.6 + i) * 6);
+      p.color = const Color(0xFFFFDC96).withValues(alpha: 0.15 + 0.3 * q[2]);
+      canvas.drawCircle(Offset(x, y), 0.8 + q[2] * 1.4, p);
     }
   }
 
