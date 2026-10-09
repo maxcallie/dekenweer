@@ -167,11 +167,19 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
     canvas.save();
     canvas.translate(top.dx, top.dy);
     canvas.rotate(swing);
+    // dijtje bovenaan, een zacht bultje voor knie of hak, slanke pijp
+    final hind = top.dx < 0;
+    final k = length * 0.52, b = length - 5;
     final path = Path()
-      ..moveTo(-4.5, 0)
-      ..lineTo(4.5, 0)
-      ..lineTo(3.4, length - 5)
-      ..lineTo(-3.0, length - 5)
+      ..moveTo(-5.2, 0)
+      ..lineTo(5.2, 0)
+      ..quadraticBezierTo(5.0, k * 0.6, hind ? 3.9 : 3.6, k)
+      ..quadraticBezierTo(hind ? 4.6 : 4.3, k + 3, 3.3, k + 6)
+      ..lineTo(3.4, b)
+      ..lineTo(-2.9, b)
+      ..lineTo(-3.0, k + 6)
+      ..quadraticBezierTo(-4.0, k + 3, -3.4, k)
+      ..quadraticBezierTo(-4.8, k * 0.6, -5.2, 0)
       ..close();
     final upperBase = coat.head ?? body;
     final upper = far ? _shade(upperBase, -0.08) : upperBase;
@@ -190,12 +198,19 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
           path, fill..color = far ? const Color(0xFFE4DED4) : const Color(0xFFF6F1EA));
       canvas.restore();
     }
-    // Hoef (lichte, gestreepte hoef onder een wit been)
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          Rect.fromLTRB(-3.6, length - 5.5, 4.4, length), const Radius.circular(1.5)),
+    // Hoef: rond naar voren, met een glimrandje (licht onder een wit been)
+    canvas.drawPath(
+      Path()
+        ..moveTo(-3.2, length - 5.5)
+        ..lineTo(3.6, length - 5.5)
+        ..quadraticBezierTo(5.6, length - 1, 5.2, length)
+        ..lineTo(-3.8, length)
+        ..quadraticBezierTo(-4.2, length - 3, -3.2, length - 5.5)
+        ..close(),
       fill..color = mark != LegMark.none ? const Color(0xFFB89A78) : const Color(0xFF2B2420),
     );
+    canvas.drawRect(Rect.fromLTWH(-3, length - 5.5, 6.4, 1.4),
+        fill..color = Colors.white.withValues(alpha: 0.18));
     canvas.restore();
   }
 
@@ -206,31 +221,27 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   // Verre benen (achter de romp)
   leg(Offset(24, -42 - lift), 42, math.pi, true, l ? m[1] : m[0]);
   leg(Offset(-30, -44 - lift), 44, 0, true, l ? m[3] : m[2]);
-  // Nabije benen
-  leg(Offset(17, -42 - lift), 42, 0, false, l ? m[0] : m[1]);
-  leg(Offset(-23, -44 - lift), 44, math.pi, false, l ? m[2] : m[3]);
 
   // ---- Staart ----------------------------------------------------------
   final swish = math.sin(pose.tailPhase) * 5;
-  final tail = Path()
-    ..moveTo(-42, -56)
-    ..cubicTo(-52, -55, -52 + swish * 0.5, -42, -49 + swish, -20);
-  canvas.drawPath(
-    tail,
-    Paint()
-      ..color = coat.mane
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round,
-  );
-  canvas.drawPath(
-    tail,
-    Paint()
-      ..color = _shade(coat.mane, 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round,
-  );
+  const strandWidths = [7.0, 5.0, 4.0, 3.0];
+  for (var k = 0; k < 4; k++) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(-42, -57)
+        ..cubicTo(-53, -56.0 - k, -53 + swish * 0.5 - k, -42, -48 + swish - k * 1.6, -22 + k * 2.5),
+      Paint()
+        ..color = k.isOdd ? _shade(coat.mane, 0.10) : coat.mane
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strandWidths[k]
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+  canvas.save();
+  canvas.translate(-48 + swish, -21);
+  canvas.rotate(0.3);
+  canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: 8.4, height: 6), fill..color = coat.mane);
+  canvas.restore();
 
   // ---- Romp ------------------------------------------------------------
   final bodyPath = Path()
@@ -275,6 +286,22 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   // subtiele schaduw onderaan de romp
   canvas.drawRect(const Rect.fromLTRB(-50, -42, 50, -30),
       fill..color = dark.withValues(alpha: 0.35));
+  // zacht licht op bil en schouder, wat schaduw bij de borst
+  final glow = _shade(body, 0.10);
+  for (final (c, r) in const [(Offset(-30, -56), 15.0), (Offset(22, -57), 11.0)]) {
+    canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = ui.Gradient.radial(
+              c, r, [glow.withValues(alpha: 0.45), glow.withValues(alpha: 0)]));
+  }
+  canvas.drawCircle(
+      const Offset(42, -44),
+      12,
+      Paint()
+        ..shader = ui.Gradient.radial(const Offset(42, -44), 12,
+            [dark.withValues(alpha: 0.3), dark.withValues(alpha: 0)]));
   switch (coat) {
     case CoatColor.pinto:
       fill.color = const Color(0xFFF6F2EA);
@@ -337,6 +364,10 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   }
   canvas.restore();
 
+  // Nabije benen (voor de romp langs)
+  leg(Offset(17, -42 - lift), 42, 0, false, l ? m[0] : m[1]);
+  leg(Offset(-23, -44 - lift), 44, math.pi, false, l ? m[2] : m[3]);
+
   // ---- Deken -----------------------------------------------------------
   final blanket = look.blanketColor;
   if (look.level.wearsBlanket && blanket != null) {
@@ -346,45 +377,75 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
     // dikkere dekens hangen iets lager
     final bottom = -40.0 + look.level.index * 0.6;
 
+    final edge = _shade(bColor, -0.16);
+    final blanketPath = Path()
+      ..moveTo(28, -63)
+      ..cubicTo(10, -64, -10, -62, -26, -63)
+      // staartflap over de bil
+      ..cubicTo(-40, -64, -49, -58, -48, -50)
+      ..quadraticBezierTo(-48, bottom - 1, -42, bottom + 1)
+      ..quadraticBezierTo(-5, bottom + 4, 30, bottom + 1)
+      ..quadraticBezierTo(38, bottom - 2, 38, -50)
+      ..quadraticBezierTo(37, -60, 28, -63)
+      ..close();
+    canvas.drawPath(blanketPath, fill..color = bColor);
     canvas.save();
-    canvas.clipPath(bodyPath);
-    canvas.drawRect(Rect.fromLTRB(-50, -80, 33, bottom), fill..color = bColor);
-    // volume: lichte rand bovenop, donkere onderkant
-    canvas.drawRect(Rect.fromLTRB(-50, bottom - 6, 33, bottom),
-        fill..color = _shade(bColor, -0.08));
-    canvas.drawLine(Offset(-50, bottom), Offset(33, bottom),
-        Paint()
-          ..color = trim
-          ..strokeWidth = 2.4);
+    canvas.clipPath(blanketPath);
+    // volume: lichte rand bovenop, donkerder aan de onderkant
+    canvas.drawRect(Rect.fromLTRB(-60, -70, 50, -63), fill..color = Colors.white.withValues(alpha: 0.12));
+    canvas.drawRect(Rect.fromLTRB(-60, bottom - 5, 50, bottom + 5),
+        fill..color = Colors.black.withValues(alpha: 0.14));
     // stiksels voor gevoerde dekens
     if (look.level.index >= BlanketLevel.medium.index) {
       final stitch = Paint()
         ..color = _shade(bColor, 0.10).withValues(alpha: 0.7)
         ..strokeWidth = 0.9
         ..style = PaintingStyle.stroke;
-      for (var x = -40.0; x < 30; x += 9) {
-        canvas.drawLine(Offset(x, -66), Offset(x + 6, bottom - 2), stitch);
+      for (var x = -48.0; x < 36; x += 8) {
+        canvas.drawLine(Offset(x, -68), Offset(x + 6, bottom + 3), stitch);
       }
     }
-    // buiksingels
-    final strap = Paint()
-      ..color = _shade(bColor, -0.18)
-      ..strokeWidth = 2.2;
-    canvas.drawLine(Offset(-2, bottom - 1), const Offset(4, -32), strap);
-    canvas.drawLine(Offset(6, bottom - 1), const Offset(12, -32), strap);
-    // voorkant van de deken
-    canvas.drawLine(const Offset(33, -70), Offset(33, bottom),
+    canvas.restore();
+    // sierrand rondom
+    canvas.drawPath(
+        blanketPath,
         Paint()
           ..color = trim
-          ..strokeWidth = 2.4);
-    canvas.restore();
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2);
+    // gekruiste buiksingels
+    final strap = Paint()
+      ..color = edge
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(-6, bottom + 2), const Offset(6, -31), strap);
+    canvas.drawLine(Offset(6, bottom + 2), const Offset(-4, -31), strap);
+    // staartkoord
+    canvas.drawPath(
+        Path()
+          ..moveTo(-47, -52)
+          ..quadraticBezierTo(-52, -40, -42, bottom + 1),
+        Paint()
+          ..color = edge
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1);
+    // sluiting op de borst
+    canvas.drawCircle(const Offset(33, -50), 1.6, fill..color = trim);
 
     if (look.neckCover) {
       canvas.save();
       canvas.clipPath(neckPath);
       // het halsstuk stopt een stukje voor het hoofd
       final stop = _lerpO(withers, pollTop, 0.82);
-      canvas.drawCircle(withers, (stop - withers).distance, fill..color = bColor);
+      final reach = (stop - withers).distance;
+      canvas.drawCircle(withers, reach, fill..color = bColor);
+      canvas.drawCircle(
+          withers,
+          reach - 1,
+          Paint()
+            ..color = trim
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
       canvas.restore();
     }
   }
@@ -393,33 +454,71 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   final maneStart = look.level.wearsBlanket && look.neckCover
       ? _lerpO(withers, pollTop, 0.8)
       : withers;
-  final mane = Path()..moveTo(maneStart.dx, maneStart.dy - 1);
-  if (maneStart == withers) {
-    mane.quadraticBezierTo(ctrlTop.dx - 2, ctrlTop.dy - 3, pollTop.dx, pollTop.dy - 1);
-  } else {
-    mane.lineTo(pollTop.dx, pollTop.dy - 1);
+  final covered = maneStart != withers;
+  final mc = covered ? maneStart : Offset(ctrlTop.dx - 2, ctrlTop.dy - 3);
+  Offset maneAt(double t) {
+    final u = 1 - t;
+    return Offset(u * u * maneStart.dx + 2 * u * t * mc.dx + t * t * pollTop.dx,
+        u * u * maneStart.dy + 2 * u * t * mc.dy + t * t * pollTop.dy);
   }
+
   canvas.drawPath(
-    mane,
+    Path()
+      ..moveTo(maneStart.dx, maneStart.dy - 1)
+      ..quadraticBezierTo(mc.dx, mc.dy, pollTop.dx, pollTop.dy - 1),
     Paint()
       ..color = coat.mane
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.5
       ..strokeCap = StrokeCap.round,
   );
+  // golfjes aan de halskant
+  final maneFill = Paint()..color = coat.mane;
+  for (var k = 1; k < 9; k++) {
+    final p = maneAt(k / 9), q = maneAt(math.min(1.0, k / 9 + 0.02));
+    final d = q - p;
+    final n = d.distance == 0 ? 1.0 : d.distance;
+    canvas.drawCircle(Offset(p.dx + d.dy / n * 2.6, p.dy - d.dx / n * 2.6), 2.4, maneFill);
+  }
+  final m1 = maneAt(0.1), m2 = maneAt(0.85);
+  canvas.drawPath(
+      Path()
+        ..moveTo(m1.dx, m1.dy)
+        ..quadraticBezierTo(mc.dx, mc.dy - 1.5, m2.dx, m2.dy),
+      Paint()
+        ..color = _shade(coat.mane, 0.14).withValues(alpha: 0.8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1);
 
   // ---- Hoofd -----------------------------------------------------------
   canvas.save();
   canvas.translate(poll.dx, poll.dy);
   canvas.rotate(headAngle);
-  // oor
-  final ear = Path()
-    ..moveTo(-1, -5)
-    ..lineTo(-8 - pose.earFlick * 3, -14)
-    ..lineTo(4, -6)
-    ..close();
   final headColor = coat.head ?? body;
-  canvas.drawPath(ear, fill..color = _shade(headColor, -0.04));
+  // verre oor (iets donkerder, erachter)
+  canvas.drawPath(
+      Path()
+        ..moveTo(2, -6)
+        ..quadraticBezierTo(-1, -15, 1, -17)
+        ..quadraticBezierTo(6, -12, 7, -6)
+        ..close(),
+      fill..color = _shade(headColor, -0.14));
+  // nabije oor met binnenkant
+  final flick = pose.earFlick * 3;
+  canvas.drawPath(
+      Path()
+        ..moveTo(-2, -5)
+        ..quadraticBezierTo(-7 - flick, -12, -8 - flick, -16)
+        ..quadraticBezierTo(-1, -14, 4, -6)
+        ..close(),
+      fill..color = _shade(headColor, -0.04));
+  canvas.drawPath(
+      Path()
+        ..moveTo(-1.5, -6.5)
+        ..quadraticBezierTo(-5 - flick, -11, -6 - flick, -13.5)
+        ..quadraticBezierTo(-1.5, -11, 1.5, -7)
+        ..close(),
+      fill..color = _shade(headColor, -0.18).withValues(alpha: 0.6));
   final headPath = Path()
     ..moveTo(-3, -7)
     ..quadraticBezierTo(14, -9, 27, -5)
@@ -489,9 +588,19 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
     canvas.drawOval(const Rect.fromLTRB(26.5, -1.5, 31, 2.8),
         fill..color = const Color(0xFF7A7476));
   }
-  // neusgat & oog
-  canvas.drawCircle(const Offset(28.5, 0.5), 1.1,
-      fill..color = const Color(0xFF1A1412));
+  // neusgat en mondje
+  final faceLine = Paint()
+    ..color = const Color(0xFF1A1412)
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  canvas.drawArc(Rect.fromCircle(center: const Offset(28.8, 0.6), radius: 1.5), 0.4,
+      -(2 * math.pi - 2.6), false, faceLine..strokeWidth = 1.2);
+  canvas.drawPath(
+      Path()
+        ..moveTo(24.5, 6.2)
+        ..quadraticBezierTo(27.5, 7.6, 30.5, 6.4),
+      faceLine..strokeWidth = 1);
+  // oog
   canvas.drawCircle(const Offset(8, -2), 1.8, fill..color = const Color(0xFF1A1412));
   if (look.blindLeftEye && pose.leftSide) {
     // we zien de linkerkant: het blinde oog
@@ -505,13 +614,12 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   // voorlok
   canvas.drawPath(
     Path()
-      ..moveTo(-2, -6)
-      ..quadraticBezierTo(4, -9, 7, -5),
-    Paint()
-      ..color = coat.mane
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.5
-      ..strokeCap = StrokeCap.round,
+      ..moveTo(-3, -6)
+      ..quadraticBezierTo(4, -11, 9, -5)
+      ..quadraticBezierTo(5, -6, 4, -3)
+      ..quadraticBezierTo(1, -6, -3, -6)
+      ..close(),
+    fill..color = coat.mane,
   );
   canvas.restore();
   canvas.restore(); // liggen/rollen
