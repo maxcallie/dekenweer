@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../logic/blanket_advisor.dart';
+import '../models/blanket.dart';
 import '../models/horse.dart';
 import '../models/weather.dart';
 import 'farm_scene.dart';
@@ -433,7 +434,10 @@ class _StablePainter extends CustomPainter {
                   ? 'regen'
                   : level.grams;
           _drapedBlanket(canvas, Offset(cx, plate.outerRect.bottom + 12),
-              math.min(bw * 0.62, 96), color, label);
+              math.min(bw * 0.62, 96), color, label,
+              pattern: pick?.main.pattern ?? BlanketPattern.none,
+              patternColor: pick?.main.color2 ?? const Color(0xFFE9D9A8),
+              brand: pick?.main.brand ?? '');
         }
 
         // tekstballonnetje bij het hinniken
@@ -521,7 +525,10 @@ class _StablePainter extends CustomPainter {
   }
 
   /// Een deken die over de onderdeur hangt, met het gewicht erop.
-  void _drapedBlanket(Canvas canvas, Offset top, double width, Color color, String label) {
+  void _drapedBlanket(Canvas canvas, Offset top, double width, Color color, String label,
+      {BlanketPattern pattern = BlanketPattern.none,
+      Color patternColor = const Color(0xFFE9D9A8),
+      String brand = ''}) {
     final hsl = HSLColor.fromColor(color);
     final dark = hsl.withLightness((hsl.lightness - 0.12).clamp(0.0, 1.0)).toColor();
     // bij een witte deken zijn naden en rand donkerder, anders lichter
@@ -539,6 +546,15 @@ class _StablePainter extends CustomPainter {
       ..quadraticBezierTo(x, y + 41, x - wd + 3, y + 34)
       ..close();
     canvas.drawPath(body, Paint()..color = color);
+    paintBlanketPattern(canvas, body, Rect.fromLTRB(x - wd, y, x + wd, y + 40), pattern,
+        patternColor, unit: 0.9);
+    if (brand.trim().isNotEmpty) {
+      canvas.save();
+      canvas.translate(x, y + 8);
+      canvas.scale(0.85);
+      paintBlanketBrand(canvas, Offset.zero, brand, color, size: 7);
+      canvas.restore();
+    }
     final seam = Paint()
       ..color = light.withValues(alpha: 0.6)
       ..strokeWidth = 1;

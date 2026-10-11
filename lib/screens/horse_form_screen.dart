@@ -5,6 +5,7 @@ import '../logic/blanket_advisor.dart';
 import '../models/horse.dart';
 import '../ui.dart';
 import 'share_screen.dart';
+import '../widgets/color_picker.dart';
 import '../widgets/horse_painter.dart';
 
 /// Paard toevoegen of bewerken.
@@ -220,27 +221,11 @@ class _HorseFormScreenState extends State<HorseFormScreen> {
           ),
           _Section(
             title: 'Standaardkleur deken',
-            child: Wrap(spacing: 10, runSpacing: 10, children: [
-              for (final c in blanketColors)
-                GestureDetector(
-                  onTap: () => setState(() => h.blanketColorValue = c.toARGB32()),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: h.blanketColorValue == c.toARGB32()
-                            ? AppColors.ink
-                            : AppColors.line,
-                        width: 3,
-                      ),
-                    ),
-                  ),
-                ),
-            ]),
+            child: ColorSwatchRow(
+              palette: blanketColors,
+              selected: h.blanketColorValue,
+              onChanged: (v) => setState(() => h.blanketColorValue = v),
+            ),
           ),
           _Section(
             title: 'Type',

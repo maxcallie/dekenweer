@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/blanket_advisor.dart';
 import '../logic/blanket_picker.dart';
+import '../models/blanket.dart';
 import '../models/horse.dart';
 
 /// Hoe het paard eruitziet (vacht + deken).
@@ -18,6 +19,9 @@ class HorseLook {
     this.blaze = Blaze.none,
     this.legs = _noLegMarks,
     this.blindLeftEye = false,
+    this.pattern = BlanketPattern.none,
+    this.patternColor = const Color(0xFFE9D9A8),
+    this.brand = '',
   });
 
   static const _noLegMarks = [LegMark.none, LegMark.none, LegMark.none, LegMark.none];
@@ -34,6 +38,11 @@ class HorseLook {
   /// Licht melkachtig linkeroog (Nero).
   final bool blindLeftEye;
 
+  /// Patroon, kleur van het patroon en merknaam op de deken.
+  final BlanketPattern pattern;
+  final Color patternColor;
+  final String brand;
+
   /// Als er een deken uit de dekenkast gekozen is ([pick]), dan draagt het
   /// paard die deken (kleur en halsstuk); anders de standaardkleur.
   factory HorseLook.of(Horse h, [BlanketAdvice? a, BlanketPick? pick]) =>
@@ -45,7 +54,125 @@ class HorseLook {
         blaze: h.blaze,
         legs: h.legs,
         blindLeftEye: h.blindLeftEye,
+        pattern: pick?.main.pattern ?? BlanketPattern.none,
+        patternColor: pick?.main.color2 ?? const Color(0xFFE9D9A8),
+        brand: pick?.main.brand ?? '',
       );
+}
+
+/// Tekent het patroon van een deken binnen [clip]. [bounds] is het gebied
+/// waarover het patroon loopt; [unit] schaalt de maat van het patroon.
+void paintBlanketPattern(Canvas canvas, Path clip, Rect bounds, BlanketPattern pattern,
+    Color c, {double unit = 1}) {
+  if (pattern == BlanketPattern.none) return;
+  canvas.save();
+  canvas.clipPath(clip);
+  final p = Paint()..isAntiAlias = true;
+  final r = bounds.inflate(4 * unit);
+  switch (pattern) {
+    case BlanketPattern.none:
+      break;
+    case BlanketPattern.check:
+      p.color = c.withValues(alpha: 0.55);
+      for (var x = r.left; x < r.right; x += 12 * unit) {
+        canvas.drawRect(Rect.fromLTWH(x, r.top, 4 * unit, r.height), p);
+      }
+      for (var y = r.top + 4 * unit; y < r.bottom; y += 12 * unit) {
+        canvas.drawRect(Rect.fromLTWH(r.left, y, r.width, 4 * unit), p);
+      }
+      final thin = Paint()
+        ..color = c.withValues(alpha: 0.35)
+        ..strokeWidth = 0.8 * unit;
+      for (var x = r.left + 6 * unit; x < r.right; x += 12 * unit) {
+        canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), thin);
+      }
+      for (var y = r.top + 10 * unit; y < r.bottom; y += 12 * unit) {
+        canvas.drawLine(Offset(r.left, y), Offset(r.right, y), thin);
+      }
+    case BlanketPattern.stripes:
+      p.color = c;
+      canvas.drawRect(Rect.fromLTRB(r.left, bounds.bottom - 9 * unit, r.right, bounds.bottom - 5.8 * unit), p);
+      canvas.drawRect(Rect.fromLTRB(r.left, bounds.bottom - 4.5 * unit, r.right, bounds.bottom - 2.9 * unit), p);
+    case BlanketPattern.twoTone:
+      p.color = c;
+      final mid = bounds.top + bounds.height * 0.5;
+      canvas.drawPath(
+          Path()
+            ..moveTo(r.left, mid)
+            ..quadraticBezierTo(bounds.center.dx, mid + 4 * unit, r.right, mid - 1 * unit)
+            ..lineTo(r.right, r.bottom)
+            ..lineTo(r.left, r.bottom)
+            ..close(),
+          p);
+    case BlanketPattern.pinstripe:
+      final line = Paint()
+        ..color = c.withValues(alpha: 0.6)
+        ..strokeWidth = 0.7 * unit;
+      for (var x = r.left; x < r.right; x += 4.5 * unit) {
+        canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), line);
+      }
+    case BlanketPattern.dots:
+      p.color = c;
+      var row = 0;
+      for (var y = r.top + 3 * unit; y < r.bottom; y += 6 * unit, row++) {
+        for (var x = r.left + (row.isOdd ? 3 : 0) * unit; x < r.right; x += 6 * unit) {
+          canvas.drawCircle(Offset(x, y), 1.2 * unit, p);
+        }
+      }
+    case BlanketPattern.stars:
+      p.color = c;
+      var row = 0;
+      for (var y = r.top + 5 * unit; y < r.bottom; y += 9 * unit, row++) {
+        for (var x = r.left + (row.isOdd ? 5 : 0) * unit; x < r.right; x += 10 * unit) {
+          final star = Path();
+          for (var k = 0; k < 10; k++) {
+            final a = k * math.pi / 5 - math.pi / 2;
+            final rad = (k.isOdd ? 1.1 : 2.6) * unit;
+            final pt = Offset(x + math.cos(a) * rad, y + math.sin(a) * rad);
+            if (k == 0) {
+              star.moveTo(pt.dx, pt.dy);
+            } else {
+              star.lineTo(pt.dx, pt.dy);
+            }
+          }
+          canvas.drawPath(star..close(), p);
+        }
+      }
+  }
+  canvas.restore();
+}
+
+final Map<String, TextPainter> _brandCache = {};
+
+/// Merknaam op de zij van de deken, in wit of donker (wat het beste opvalt).
+void paintBlanketBrand(Canvas canvas, Offset center, String brand, Color blanket,
+    {double size = 7.5}) {
+  final text = brand.trim();
+  if (text.isEmpty) return;
+  final dark = HSLColor.fromColor(blanket).lightness > 0.62;
+  final tp = _brandCache.putIfAbsent(
+    '$text|$dark|$size',
+    () => TextPainter(
+      text: TextSpan(
+        text: text.toUpperCase(),
+        style: TextStyle(
+          color: dark ? const Color(0xE61F2A22) : const Color(0xEBFFFFFF),
+          fontSize: size,
+          fontWeight: FontWeight.w900,
+          letterSpacing: size * 0.08,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(),
+  );
+  // te lang? dan kleiner, zodat het op de deken past
+  final maxW = 46.0;
+  canvas.save();
+  canvas.translate(center.dx, center.dy);
+  if (tp.width > maxW) canvas.scale(maxW / tp.width);
+  tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+  canvas.restore();
 }
 
 /// Zachte blauwgrijze waas over een oog (blind, maar vriendelijk): het oog
@@ -391,6 +518,8 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
       ..quadraticBezierTo(37, -60, 28, -63)
       ..close();
     canvas.drawPath(blanketPath, fill..color = bColor);
+    paintBlanketPattern(canvas, blanketPath, Rect.fromLTRB(-50, -66, 40, bottom + 3),
+        look.pattern, look.patternColor);
     canvas.save();
     canvas.clipPath(blanketPath);
     // volume: lichte rand bovenop, donkerder aan de onderkant
@@ -433,6 +562,8 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
           ..strokeWidth = 1.1);
     // sluiting op de borst
     canvas.drawCircle(const Offset(33, -50), 1.6, fill..color = trim);
+    // merknaam op de zij
+    paintBlanketBrand(canvas, const Offset(-16, -49), look.brand, bColor);
 
     if (look.neckCover) {
       canvas.save();

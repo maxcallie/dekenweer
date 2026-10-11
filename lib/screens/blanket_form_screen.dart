@@ -4,6 +4,7 @@ import '../logic/blanket_advisor.dart';
 import '../models/blanket.dart';
 import '../models/horse.dart';
 import '../ui.dart';
+import '../widgets/color_picker.dart';
 import '../widgets/horse_painter.dart';
 
 /// Deken toevoegen of bewerken.
@@ -18,6 +19,7 @@ class BlanketFormScreen extends StatefulWidget {
 class _BlanketFormScreenState extends State<BlanketFormScreen> {
   late final Blanket b;
   late final TextEditingController _name;
+  late final TextEditingController _brand;
   bool get _isNew => widget.blanket == null;
 
   @override
@@ -26,11 +28,13 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
     b = widget.blanket?.copy() ??
         Blanket(id: DateTime.now().microsecondsSinceEpoch.toString(), name: '');
     _name = TextEditingController(text: b.name);
+    _brand = TextEditingController(text: b.brand);
   }
 
   @override
   void dispose() {
     _name.dispose();
+    _brand.dispose();
     super.dispose();
   }
 
@@ -75,6 +79,7 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
       return;
     }
     b.name = name;
+    b.brand = _brand.text.trim();
     await AppScope.read(context).saveBlanket(b);
     if (mounted) Navigator.of(context).pop();
   }
@@ -100,7 +105,14 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final horses = AppScope.of(context).horses;
+    final app = AppScope.of(context);
+    final horses = app.horses;
+    final others = app.blankets.where((o) => o.id != b.id);
+    final recentMain = {for (final o in others) o.colorValue}.map(Color.new).toList();
+    final recentSecond = {
+      for (final o in others)
+        if (o.pattern != BlanketPattern.none) o.color2Value
+    }.map(Color.new).toList();
     final previewCoat = horses.isNotEmpty ? horses.first.coat : CoatColor.bay;
     final previewLevel = b.grams == 0
         ? BlanketLevel.rainSheet
@@ -142,6 +154,9 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
                   blanketColor: b.color,
                   level: previewLevel,
                   neckCover: b.neck,
+                  pattern: b.pattern,
+                  patternColor: b.color2,
+                  brand: _brand.text.trim(),
                 ),
                 size: 145,
               ),
@@ -216,24 +231,46 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
           ),
           _Section(
             title: 'Kleur',
-            child: Wrap(spacing: 10, runSpacing: 10, children: [
-              for (final c in blanketColors)
-                GestureDetector(
-                  onTap: () => setState(() => b.colorValue = c.toARGB32()),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: b.colorValue == c.toARGB32() ? AppColors.ink : AppColors.line,
-                        width: 3,
-                      ),
-                    ),
-                  ),
+            child: ColorSwatchRow(
+              palette: blanketColors,
+              selected: b.colorValue,
+              recent: recentMain,
+              onChanged: (v) => setState(() => b.colorValue = v),
+            ),
+          ),
+          _Section(
+            title: 'Patroon',
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final p in BlanketPattern.values)
+                ChoiceChip(
+                  label: Text(p.label),
+                  selected: b.pattern == p,
+                  onSelected: (_) => setState(() => b.pattern = p),
                 ),
             ]),
+          ),
+          if (b.pattern != BlanketPattern.none)
+            _Section(
+              title: 'Tweede kleur',
+              child: ColorSwatchRow(
+                palette: _secondColors,
+                selected: b.color2Value,
+                recent: recentSecond,
+                onChanged: (v) => setState(() => b.color2Value = v),
+              ),
+            ),
+          _Section(
+            title: 'Merknaam op de zij',
+            child: TextField(
+              controller: _brand,
+              maxLength: 14,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'bijv. BUCAS (optioneel)',
+                helperText: 'Laat leeg als je geen tekst op de deken wilt.',
+              ),
+            ),
           ),
           if (horses.isNotEmpty)
             _Section(
@@ -281,6 +318,16 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
     );
   }
 }
+
+const _secondColors = <Color>[
+  Color(0xFFE9D9A8), // crème
+  Color(0xFFFFFFFF), // wit
+  Color(0xFF1F3A5F), // marine
+  Color(0xFF7A1F2B), // bordeaux
+  Color(0xFF2F5D3A), // groen
+  Color(0xFF3A3F45), // antraciet
+  Color(0xFFD9A441), // goud
+];
 
 class _KindRow extends StatelessWidget {
   const _KindRow({required this.kind, required this.selected, required this.onTap});

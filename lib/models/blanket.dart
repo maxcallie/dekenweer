@@ -25,6 +25,20 @@ enum BlanketKind {
       this == BlanketKind.stable;
 }
 
+/// Patroon op de deken (in een tweede kleur).
+enum BlanketPattern {
+  none('Effen'),
+  check('Ruit'),
+  stripes('Strepen'),
+  twoTone('Tweekleurig'),
+  pinstripe('Krijtstreep'),
+  dots('Stippen'),
+  stars('Sterren');
+
+  const BlanketPattern(this.label);
+  final String label;
+}
+
 class Blanket {
   Blanket({
     required this.id,
@@ -34,6 +48,9 @@ class Blanket {
     this.waterproof = true,
     this.neck = false,
     this.colorValue = 0xFF1F3A5F,
+    this.pattern = BlanketPattern.none,
+    this.color2Value = 0xFFE9D9A8,
+    this.brand = '',
     List<String>? horseIds,
   }) : horseIds = horseIds ?? [];
 
@@ -49,10 +66,18 @@ class Blanket {
   bool neck;
   int colorValue;
 
+  /// Patroon en de kleur van het patroon.
+  BlanketPattern pattern;
+  int color2Value;
+
+  /// Merknaam op de zij (leeg = niets).
+  String brand;
+
   /// Voor welke paarden de deken past. Leeg = alle paarden.
   List<String> horseIds;
 
   Color get color => Color(colorValue);
+  Color get color2 => Color(color2Value);
 
   bool fits(String horseId) => horseIds.isEmpty || horseIds.contains(horseId);
 
@@ -73,6 +98,9 @@ class Blanket {
         'waterproof': waterproof,
         'neck': neck,
         'color': colorValue,
+        if (pattern != BlanketPattern.none) 'pattern': pattern.name,
+        if (pattern != BlanketPattern.none) 'color2': color2Value,
+        if (brand.isNotEmpty) 'brand': brand,
         'horses': horseIds,
       };
 
@@ -85,6 +113,10 @@ class Blanket {
         waterproof: j['waterproof'] as bool? ?? false,
         neck: j['neck'] as bool? ?? false,
         colorValue: (j['color'] as num?)?.toInt() ?? 0xFF1F3A5F,
+        pattern: BlanketPattern.values.firstWhere((p) => p.name == j['pattern'],
+            orElse: () => BlanketPattern.none),
+        color2Value: (j['color2'] as num?)?.toInt() ?? 0xFFE9D9A8,
+        brand: j['brand'] as String? ?? '',
         horseIds: ((j['horses'] as List?) ?? const []).cast<String>().toList(),
       );
 }
