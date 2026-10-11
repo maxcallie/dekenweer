@@ -171,6 +171,10 @@ void paintBlanketBrand(Canvas canvas, Offset center, String brand, Color blanket
   canvas.save();
   canvas.translate(center.dx, center.dy);
   if (tp.width > maxW) canvas.scale(maxW / tp.width);
+  // Gespiegeld paard (kijkt naar links)? Dan de tekst terugspiegelen zodat
+  // de merknaam leesbaar blijft.
+  final m = canvas.getTransform();
+  if (m[0] * m[5] - m[1] * m[4] < 0) canvas.scale(-1, 1);
   tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
   canvas.restore();
 }
@@ -813,6 +817,9 @@ class _AvatarPainter extends CustomPainter {
       old.look.level != look.level ||
       old.look.blanketColor != look.blanketColor ||
       old.look.neckCover != look.neckCover ||
+      old.look.pattern != look.pattern ||
+      old.look.patternColor != look.patternColor ||
+      old.look.brand != look.brand ||
       old.look.blindLeftEye != look.blindLeftEye ||
       old.graze != graze ||
       old.leftSide != leftSide;
