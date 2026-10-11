@@ -13,6 +13,7 @@ PeriodWeather period({
   bool night = true,
   double wind = 5,
   double precip = 0,
+  double? sun,
 }) {
   final start = DateTime(2026, 11, 10, night ? 20 : 8);
   final hours = [
@@ -26,6 +27,8 @@ PeriodWeather period({
         code: precip > 0 ? 63 : 2,
         wind: wind,
         humidity: 85,
+        sunshine: sun,
+        isDay: sun == null ? null : !night,
       ),
   ];
   return PeriodWeather.fromHours(hours,
@@ -96,6 +99,174 @@ void main() {
       final back = AdviceSettings.fromJson(s.toJson());
       expect(back.wet, 5);
       expect(back.full, AdviceSettings.defaultFull);
+    });
+  });
+
+  group('regendeken alleen bij nat weer', () {
+    // Deels geschoren: geen deken vanaf 15 °C, regendeken vanaf 10 °C.
+    const clip = ClipType.partial;
+    final aan = AdviceSettings.defaults.withRainOnlyWet(clip, true);
+    final uit = AdviceSettings.defaults.withRainOnlyWet(clip, false);
+
+    test('12 °C droog, schakelaar uit: regendeken', () {
+      expect(BlanketAdvisor(uit).levelForWeather(clip, 12, wet: false),
+          BlanketLevel.rainSheet);
+    });
+
+    test('12 °C droog, schakelaar aan: geen deken', () {
+      expect(BlanketAdvisor(aan).levelForWeather(clip, 12, wet: false),
+          BlanketLevel.none);
+    });
+
+    test('standaard zoals vroeger: alleen ongeschoren is "alleen bij nat weer"', () {
+      const s = AdviceSettings.defaults;
+      expect(s.rainOnlyWetFor(ClipType.none), isTrue);
+      expect(s.rainOnlyWetFor(ClipType.partial), isFalse);
+      expect(s.rainOnlyWetFor(ClipType.full), isFalse);
+      final h = Horse(id: '1', name: 'Bella');
+      // ongeschoren, 6 °C droog: geen deken (zoals altijd)
+      expect(advisor.advise(h, period(temp: 6)).level, BlanketLevel.none);
+    });
+
+    test('ongeschoren met schakelaar uit: regendeken ook droog', () {
+      final h = Horse(id: '1', name: 'Bella');
+      final s = AdviceSettings.defaults.withRainOnlyWet(ClipType.none, false);
+      expect(BlanketAdvisor(s).advise(h, period(temp: 6)).level, BlanketLevel.rainSheet);
+    });
+  });
+
+  group('vliegendeken met regenstuk', () {
+    const clip = ClipType.partial; // geen deken vanaf 15 °C, tot 20 °C
+    const a = BlanketAdvisor();
+
+    test('17 °C met regen: vliegendeken met regenstuk', () {
+      expect(a.levelForWeather(clip, 17, wet: true), BlanketLevel.flyRain);
+    });
+
+    test('17 °C droog: geen deken', () {
+      expect(a.levelForWeather(clip, 17, wet: false), BlanketLevel.none);
+    });
+
+    test('boven de bovengrens met regen: geen deken', () {
+      expect(a.levelForWeather(clip, 21, wet: true), BlanketLevel.none);
+    });
+
+    test('uitgeschakeld: zoals vroeger', () {
+      final off = BlanketAdvisor(AdviceSettings.defaults.copyWith(flyRain: false));
+      expect(off.levelForWeather(clip, 17, wet: true), BlanketLevel.none);
+      // geschoren paard in de regen onder 16 °C: regendeken
+      expect(off.levelForWeather(clip, 15.5, wet: true, base: 15.5),
+          BlanketLevel.rainSheet);
+    });
+
+    test('volledig advies: ongeschoren paard bij 15 °C regen', () {
+      final h = Horse(id: '1', name: 'Bella');
+      // 15 − 3 (nat) = 12 °C: boven "geen deken" (8), onder 20.
+      final adv = advisor.advise(h, period(temp: 15, precip: 6));
+      expect(adv.level, BlanketLevel.flyRain);
+      final fly = Blanket(id: 'f', name: 'Vlieg', kind: BlanketKind.fly, grams: 0);
+      final turnout = Blanket(id: 't', name: 'Buiten', kind: BlanketKind.turnout, grams: 0);
+      expect(BlanketPicker.pick(h, adv, [turnout, fly])!.main.id, 'f');
+      expect(BlanketPicker.pick(h, adv, [turnout]), isNull);
+    });
+
+    test('bovengrens blijft boven "geen deken"', () {
+      final s = AdviceSettings.defaults.withThreshold(ClipType.partial, 0, 25);
+      expect(s.flyRainUpToFor(ClipType.partial), greaterThan(25));
+      final t = s.withFlyRainUpTo(ClipType.partial, 3);
+      expect(t.flyRainUpToFor(ClipType.partial), 26);
+    });
+  });
+
+  group('zon', () {
+    final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
+
+    test('volle zon telt overdag +4°, zonnig +2°', () {
+      final none = advisor.advise(h, period(temp: 10, night: false));
+      final full = advisor.advise(h, period(temp: 10, night: false, sun: 1));
+      final some = advisor.advise(h, period(temp: 10, night: false, sun: 0.5));
+      final cloudy = advisor.advise(h, period(temp: 10, night: false, sun: 0.1));
+      expect(full.effectiveTemp - none.effectiveTemp, 4);
+      expect(some.effectiveTemp - none.effectiveTemp, 2);
+      expect(cloudy.effectiveTemp, none.effectiveTemp);
+      expect(full.reasons, contains('Volle zon +4°'));
+      expect(some.reasons, contains('Zonnig +2°'));
+    });
+
+    test('niet \'s nachts en niet op stal', () {
+      final night = advisor.advise(h, period(temp: 10, night: true, sun: 1));
+      expect(night.reasons.where((r) => r.contains('zon')), isEmpty);
+      final dry = advisor.advise(h, period(temp: 10, night: true));
+      expect(night.effectiveTemp, dry.effectiveTemp);
+      final inside =
+          advisor.advise(h, period(temp: 10, night: false, sun: 1), inside: true);
+      final insideCloudy = advisor.advise(h, period(temp: 10, night: false), inside: true);
+      expect(inside.effectiveTemp, insideCloudy.effectiveTemp);
+    });
+
+    test('telt op met wind', () {
+      final calm = advisor.advise(h, period(temp: 10, night: false));
+      final both = advisor.advise(h, period(temp: 10, night: false, sun: 1, wind: 25));
+      expect(both.effectiveTemp - calm.effectiveTemp, 2); // +4 − 2
+    });
+
+    test('nachtelijke uren tellen niet mee in de zon', () {
+      final start = DateTime(2026, 11, 10, 6);
+      final hours = [
+        for (var i = 0; i < 6; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            temp: 10, feels: 10, precipProb: 0, precip: 0, code: 0, wind: 5,
+            humidity: 80,
+            sunshine: i < 2 ? 0 : 1,
+            isDay: i >= 2, // 06–08 nog donker
+          ),
+      ];
+      final w = PeriodWeather.fromHours(hours,
+          start: start, end: start.add(const Duration(hours: 6)),
+          isNight: false, label: 'Ochtend');
+      expect(w.sunFraction, 1);
+    });
+  });
+
+  group('instellingen migreren', () {
+    test('oude opgeslagen instellingen krijgen standaard voor nieuwe velden', () {
+      final old = {
+        'unclipped': [9, 3, -3, -10, -18],
+        'partial': AdviceSettings.defaultPartial,
+        'full': AdviceSettings.defaultFull,
+        'windModerate': 2,
+        'windStrong': 4,
+        'wet': 4,
+        'stable': 5,
+      };
+      final s = AdviceSettings.fromJson(old);
+      expect(s.unclipped.first, 9);
+      expect(s.wet, 4);
+      expect(s.rainOnlyWet, AdviceSettings.defaultRainOnlyWet);
+      expect(s.flyRain, isTrue);
+      expect(s.flyRainUpTo, AdviceSettings.defaultFlyRainUpTo);
+      expect(s.sunny, 2);
+      expect(s.fullSun, 4);
+    });
+
+    test('nieuwe velden opslaan en teruglezen', () {
+      final s = AdviceSettings.defaults
+          .withRainOnlyWet(ClipType.none, false)
+          .withFlyRainUpTo(ClipType.full, 24)
+          .copyWith(flyRain: false, sunny: 1, fullSun: 6);
+      final back = AdviceSettings.fromJson(s.toJson());
+      expect(back.rainOnlyWet, [false, false, false]);
+      expect(back.flyRainUpToFor(ClipType.full), 24);
+      expect(back.flyRain, isFalse);
+      expect(back.sunny, 1);
+      expect(back.fullSun, 6);
+      expect(back.isDefault, isFalse);
+    });
+
+    test('standaard zet alles terug', () {
+      expect(AdviceSettings.defaults.isDefault, isTrue);
+      expect(AdviceSettings.fromJson(AdviceSettings.defaults.toJson()).isDefault, isTrue);
     });
   });
 

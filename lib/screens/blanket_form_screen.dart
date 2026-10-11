@@ -51,6 +51,10 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
 
   /// Bij welk advies past deze vulling (alleen ter info).
   String _levelHint() {
+    if (b.kind == BlanketKind.fly) {
+      return 'Telt mee als vliegendeken met regenstuk bij warm, nat weer '
+          '(als die optie aan staat in de adviesinstellingen).';
+    }
     if (!b.kind.isMain && b.kind != BlanketKind.under) {
       return 'Telt niet mee in het dekenadvies.';
     }

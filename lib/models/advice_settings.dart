@@ -12,7 +12,22 @@ class AdviceSettings {
     this.windStrong = 4,
     this.wet = 3,
     this.stable = 5,
+    this.sunny = 2,
+    this.fullSun = 4,
+    this.rainOnlyWet = defaultRainOnlyWet,
+    this.flyRain = true,
+    this.flyRainUpTo = defaultFlyRainUpTo,
   });
+
+  /// Per scheerstatus (niet / deels / volledig geschoren): regendeken alleen
+  /// adviseren bij nat weer? Standaard alleen bij een ongeschoren paard, zoals
+  /// het advies altijd werkte.
+  static const defaultRainOnlyWet = <bool>[true, false, false];
+
+  /// Per scheerstatus: tot welke (effectieve) temperatuur een vliegendeken
+  /// met regenstuk wordt geadviseerd bij regen. De ondergrens is die van
+  /// 'Geen deken'.
+  static const defaultFlyRainUpTo = <double>[20, 20, 22];
 
   // Ondergrenzen (°C, effectieve temperatuur) voor resp. geen deken,
   // regendeken, licht, middel en zwaar. Daaronder: extra zwaar.
@@ -36,6 +51,21 @@ class AdviceSettings {
   /// Hoeveel warmer het 's nachts op stal is.
   final double stable;
 
+  /// Hoeveel warmer het overdag voelt bij zon (deels zonnig) …
+  final double sunny;
+
+  /// … en bij volle zon.
+  final double fullSun;
+
+  final List<bool> rainOnlyWet;
+
+  /// Vliegendeken met regenstuk meenemen in het advies?
+  final bool flyRain;
+  final List<double> flyRainUpTo;
+
+  bool rainOnlyWetFor(ClipType clip) => rainOnlyWet[clip.index];
+  double flyRainUpToFor(ClipType clip) => flyRainUpTo[clip.index];
+
   static const defaults = AdviceSettings();
 
   bool get isDefault =>
@@ -45,7 +75,20 @@ class AdviceSettings {
       windModerate == 2 &&
       windStrong == 4 &&
       wet == 3 &&
-      stable == 5;
+      stable == 5 &&
+      sunny == 2 &&
+      fullSun == 4 &&
+      flyRain &&
+      _eq(flyRainUpTo, defaultFlyRainUpTo) &&
+      _eqB(rainOnlyWet, defaultRainOnlyWet);
+
+  static bool _eqB(List<bool> a, List<bool> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   static bool _eq(List<double> a, List<double> b) {
     if (a.length != b.length) return false;
@@ -71,11 +114,29 @@ class AdviceSettings {
     for (var j = index - 1; j >= 0; j--) {
       t[j] = math.max(t[j], t[j + 1] + 1);
     }
+    // De bovengrens van de vliegendeken met regenstuk blijft boven 'Geen deken'.
+    final up = List<double>.of(flyRainUpTo);
+    up[clip.index] = math.max(up[clip.index], t[0] + 1);
     return copyWith(
       unclipped: clip == ClipType.none ? t : null,
       partial: clip == ClipType.partial ? t : null,
       full: clip == ClipType.full ? t : null,
+      flyRainUpTo: up,
     );
+  }
+
+  /// Zet de bovengrens van de vliegendeken met regenstuk (minstens 1 °C
+  /// boven 'Geen deken').
+  AdviceSettings withFlyRainUpTo(ClipType clip, double value) {
+    final up = List<double>.of(flyRainUpTo);
+    up[clip.index] = math.max(math.min(value, 45.0), thresholdsFor(clip)[0] + 1);
+    return copyWith(flyRainUpTo: up);
+  }
+
+  AdviceSettings withRainOnlyWet(ClipType clip, bool value) {
+    final r = List<bool>.of(rainOnlyWet);
+    r[clip.index] = value;
+    return copyWith(rainOnlyWet: r);
   }
 
   AdviceSettings copyWith({
@@ -86,6 +147,11 @@ class AdviceSettings {
     double? windStrong,
     double? wet,
     double? stable,
+    double? sunny,
+    double? fullSun,
+    List<bool>? rainOnlyWet,
+    bool? flyRain,
+    List<double>? flyRainUpTo,
   }) =>
       AdviceSettings(
         unclipped: unclipped ?? this.unclipped,
@@ -95,6 +161,11 @@ class AdviceSettings {
         windStrong: windStrong ?? this.windStrong,
         wet: wet ?? this.wet,
         stable: stable ?? this.stable,
+        sunny: sunny ?? this.sunny,
+        fullSun: fullSun ?? this.fullSun,
+        rainOnlyWet: rainOnlyWet ?? this.rainOnlyWet,
+        flyRain: flyRain ?? this.flyRain,
+        flyRainUpTo: flyRainUpTo ?? this.flyRainUpTo,
       );
 
   Map<String, dynamic> toJson() => {
@@ -105,12 +176,26 @@ class AdviceSettings {
         'windStrong': windStrong,
         'wet': wet,
         'stable': stable,
+        'sunny': sunny,
+        'fullSun': fullSun,
+        'rainOnlyWet': rainOnlyWet,
+        'flyRain': flyRain,
+        'flyRainUpTo': flyRainUpTo,
       };
 
   factory AdviceSettings.fromJson(Map<String, dynamic> j) {
     List<double> list(Object? v, List<double> fallback) {
-      if (v is! List || v.length != 5) return fallback;
+      if (v is! List || v.length != fallback.length || v.any((x) => x is! num)) {
+        return fallback;
+      }
       return [for (final x in v) (x as num).toDouble()];
+    }
+
+    List<bool> bools(Object? v, List<bool> fallback) {
+      if (v is! List || v.length != fallback.length || v.any((x) => x is! bool)) {
+        return fallback;
+      }
+      return v.cast<bool>().toList();
     }
 
     double num_(Object? v, double fallback) => (v as num?)?.toDouble() ?? fallback;
@@ -123,6 +208,21 @@ class AdviceSettings {
       windStrong: num_(j['windStrong'], 4),
       wet: num_(j['wet'], 3),
       stable: num_(j['stable'], 5),
-    );
+      sunny: num_(j['sunny'], 2),
+      fullSun: num_(j['fullSun'], 4),
+    ).copyWith(
+      // Nieuwe velden: oude opgeslagen instellingen krijgen de standaard.
+      rainOnlyWet: bools(j['rainOnlyWet'], defaultRainOnlyWet),
+      flyRain: j['flyRain'] is bool ? j['flyRain'] as bool : true,
+    ).withFlyRainUpToList(list(j['flyRainUpTo'], defaultFlyRainUpTo));
+  }
+
+  /// Bovengrenzen overnemen, maar nooit onder 'Geen deken' + 1.
+  AdviceSettings withFlyRainUpToList(List<double> up) {
+    var s = this;
+    for (final c in ClipType.values) {
+      s = s.withFlyRainUpTo(c, up[c.index]);
+    }
+    return s;
   }
 }

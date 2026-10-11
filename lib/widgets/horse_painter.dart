@@ -503,7 +503,13 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   final blanket = look.blanketColor;
   if (look.level.wearsBlanket && blanket != null) {
     final isSheet = look.level == BlanketLevel.rainSheet;
-    final bColor = isSheet ? _shade(blanket, 0.12) : blanket;
+    final isFly = look.level == BlanketLevel.flyRain;
+    // vliegendeken: licht gaas, met een dicht regenstuk over de rug
+    final bColor = isSheet
+        ? _shade(blanket, 0.12)
+        : isFly
+            ? _shade(blanket, 0.38)
+            : blanket;
     // sierrand: bij een lichte (witte) deken donkerder, anders lichter
     final light = HSLColor.fromColor(bColor).lightness > 0.8;
     final trim = _shade(bColor, light ? -0.22 : 0.22);
@@ -524,6 +530,28 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
     canvas.drawPath(blanketPath, fill..color = bColor);
     paintBlanketPattern(canvas, blanketPath, Rect.fromLTRB(-50, -66, 40, bottom + 3),
         look.pattern, look.patternColor);
+    if (isFly) {
+      canvas.save();
+      canvas.clipPath(blanketPath);
+      // gaas
+      final mesh = Paint()
+        ..color = _shade(blanket, -0.1).withValues(alpha: 0.28)
+        ..strokeWidth = 0.6;
+      for (var x = -60.0; x < 50; x += 3) {
+        canvas.drawLine(Offset(x, -70), Offset(x + 30, bottom + 4), mesh);
+        canvas.drawLine(Offset(x + 30, -70), Offset(x, bottom + 4), mesh);
+      }
+      // regenstuk over rug en kruis
+      canvas.drawPath(
+          Path()
+            ..moveTo(-52, -70)
+            ..lineTo(42, -70)
+            ..lineTo(42, -58)
+            ..quadraticBezierTo(-5, -53, -52, -56)
+            ..close(),
+          Paint()..color = blanket);
+      canvas.restore();
+    }
     canvas.save();
     canvas.clipPath(blanketPath);
     // volume: lichte rand bovenop, donkerder aan de onderkant

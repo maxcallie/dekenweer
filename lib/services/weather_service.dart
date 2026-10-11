@@ -20,7 +20,8 @@ class WeatherService {
       'current': 'temperature_2m,apparent_temperature,relative_humidity_2m,'
           'precipitation,weather_code,wind_speed_10m,wind_gusts_10m,is_day',
       'hourly': 'temperature_2m,apparent_temperature,precipitation_probability,'
-          'precipitation,weather_code,wind_speed_10m,relative_humidity_2m',
+          'precipitation,weather_code,wind_speed_10m,relative_humidity_2m,'
+          'sunshine_duration,cloud_cover,is_day',
       'daily': 'weather_code,temperature_2m_max,temperature_2m_min,'
           'precipitation_sum,precipitation_probability_max,wind_speed_10m_max',
       'timezone': 'auto',

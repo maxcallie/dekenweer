@@ -105,6 +105,9 @@ class HourWeather {
     required this.code,
     required this.wind,
     required this.humidity,
+    this.sunshine,
+    this.cloudCover,
+    this.isDay,
   });
 
   final DateTime time;
@@ -115,6 +118,24 @@ class HourWeather {
   final int code;
   final double wind;
   final int humidity;
+
+  /// Deel van het uur met zon (0–1), uit 'sunshine_duration'. Null als de
+  /// weerdienst dit niet gaf (bijv. een oude bewaarde voorspelling).
+  final double? sunshine;
+
+  /// Bewolking in procent (reserve als zonneschijnduur ontbreekt).
+  final int? cloudCover;
+
+  /// Is het licht in dit uur?
+  final bool? isDay;
+
+  /// Zon in dit uur (0–1), of null als dat niet bekend is.
+  double? get sun {
+    if (isDay == false) return 0;
+    if (sunshine != null) return sunshine;
+    if (cloudCover != null && isDay == true) return 1 - cloudCover! / 100;
+    return null;
+  }
 }
 
 class DayWeather {
@@ -190,6 +211,9 @@ class Forecast {
     );
 
     final h = j['hourly'] as Map<String, dynamic>;
+    // Optionele reeksen (ontbreken in oudere bewaarde voorspellingen).
+    double? opt(Object? list, int k) =>
+        list is List && k < list.length ? (list[k] as num?)?.toDouble() : null;
     final times = (h['time'] as List).cast<String>();
     final hours = <HourWeather>[
       for (var k = 0; k < times.length; k++)
@@ -202,6 +226,11 @@ class Forecast {
           code: i((h['weather_code'] as List)[k]),
           wind: d((h['wind_speed_10m'] as List)[k]),
           humidity: i((h['relative_humidity_2m'] as List)[k]),
+          sunshine: opt(h['sunshine_duration'], k) == null
+              ? null
+              : (opt(h['sunshine_duration'], k)! / 3600).clamp(0.0, 1.0),
+          cloudCover: opt(h['cloud_cover'], k)?.round(),
+          isDay: opt(h['is_day'], k) == null ? null : opt(h['is_day'], k) == 1,
         ),
     ];
 
@@ -251,6 +280,7 @@ class PeriodWeather {
     required this.maxPrecipProb,
     required this.avgHumidity,
     required this.code,
+    this.sunFraction,
   });
 
   final String label;
@@ -269,6 +299,10 @@ class PeriodWeather {
   /// Representatieve WMO-code voor de periode.
   final int code;
 
+  /// Gemiddeld deel van de lichte uren met zon (0–1). Null als er geen
+  /// lichte uren in de periode zitten of de zon niet bekend is.
+  final double? sunFraction;
+
   WeatherKind get kind => kindForCode(code);
 
   bool get isWet =>
@@ -282,6 +316,8 @@ class PeriodWeather {
     double minT = double.infinity, maxT = -double.infinity, sumT = 0;
     double minF = double.infinity, maxW = 0, precip = 0;
     int maxP = 0, sumH = 0;
+    double sunSum = 0;
+    var sunHours = 0;
     final counts = <WeatherKind, int>{};
     final codeFor = <WeatherKind, int>{};
     for (final h in hs) {
@@ -293,6 +329,12 @@ class PeriodWeather {
       precip += h.precip;
       maxP = math.max(maxP, h.precipProb);
       sumH += h.humidity;
+      // Alleen lichte uren tellen mee voor de zon.
+      final sun = h.sun;
+      if (sun != null && h.isDay != false && (h.isDay == true || sun > 0)) {
+        sunSum += sun;
+        sunHours++;
+      }
       final k = kindForCode(h.code);
       counts[k] = (counts[k] ?? 0) + 1;
       codeFor[k] = math.max(codeFor[k] ?? 0, h.code);
@@ -328,6 +370,7 @@ class PeriodWeather {
       maxPrecipProb: maxP,
       avgHumidity: (sumH / hs.length).round(),
       code: codeFor[chosen]!,
+      sunFraction: sunHours == 0 ? null : sunSum / sunHours,
     );
   }
 }

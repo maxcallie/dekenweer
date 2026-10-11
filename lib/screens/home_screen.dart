@@ -1098,7 +1098,9 @@ class _Legend extends StatelessWidget {
             ),
             const SizedBox(width: 5),
             Text(
-              l == BlanketLevel.none ? l.label : '${l.label} (${l.grams})',
+              l == BlanketLevel.none || l == BlanketLevel.flyRain
+                  ? l.label
+                  : '${l.label} (${l.grams})',
               style: const TextStyle(fontSize: 12, color: AppColors.muted),
             ),
           ]),

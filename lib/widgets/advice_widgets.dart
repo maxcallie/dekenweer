@@ -12,6 +12,7 @@ import 'nero.dart';
 
 String shortGrams(BlanketLevel l) => switch (l) {
       BlanketLevel.none => 'geen',
+      BlanketLevel.flyRain => 'vlieg',
       BlanketLevel.rainSheet => '0 g',
       BlanketLevel.light => '100 g',
       BlanketLevel.medium => '200 g',
@@ -91,7 +92,9 @@ class AdviceCard extends StatelessWidget {
           '${p.matches ? '' : p.offset < 0 ? ' · iets lichter dan advies' : ' · iets zwaarder dan advies'}';
     } else if (level.wearsBlanket && hasBlankets) {
       title = advice.title;
-      subtitle = '${level.grams} · geen passende deken in je dekenkast';
+      subtitle = level == BlanketLevel.flyRain
+          ? 'Geen vliegendeken in je dekenkast'
+          : '${level.grams} · geen passende deken in je dekenkast';
     } else {
       title = advice.title;
       subtitle = advice.subtitle;
@@ -338,6 +341,8 @@ class _ClosetCard extends StatelessWidget {
                 ? 'Je vaste keuze voor op stal. Het advies is '
                     '${(advice.advisedLevel ?? level).label.toLowerCase()}'
                     '${(advice.advisedLevel ?? level).wearsBlanket ? ' (${(advice.advisedLevel ?? level).grams})' : ''}.'
+                : level == BlanketLevel.flyRain
+                ? 'Warm en nat: deze vliegendeken met regenstuk houdt de rug droog.'
                 : p.matches
                 ? 'Past binnen het advies (${level.grams}).'
                 : 'Dit is de best passende deken die je hebt; het advies is ${level.grams}.',
@@ -346,8 +351,11 @@ class _ClosetCard extends StatelessWidget {
         ] else ...[
           Text(
             hasBlankets
-                ? 'Geen van je dekens past bij dit advies'
-                    '${advice.waterproof ? ' (buiten is een waterdichte deken nodig)' : ''}.'
+                ? advice.level == BlanketLevel.flyRain
+                    ? 'Je hebt nog geen vliegendeken in je dekenkast. Voeg er een toe '
+                        '(met regenstuk), of zet deze optie uit in de adviesinstellingen.'
+                    : 'Geen van je dekens past bij dit advies'
+                        '${advice.waterproof ? ' (buiten is een waterdichte deken nodig)' : ''}.'
                 : 'Leg je eigen dekens vast, dan zie je hier precies welke deken erop moet.',
             style: const TextStyle(fontSize: 14, height: 1.35),
           ),

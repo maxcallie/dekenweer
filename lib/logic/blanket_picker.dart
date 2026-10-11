@@ -36,6 +36,7 @@ class BlanketPicker {
   /// Midden van het geadviseerde bereik in gram.
   static int targetGrams(BlanketLevel l) => switch (l) {
         BlanketLevel.none => 0,
+        BlanketLevel.flyRain => 0,
         BlanketLevel.rainSheet => 0,
         BlanketLevel.light => 75,
         BlanketLevel.medium => 175,
@@ -62,6 +63,13 @@ class BlanketPicker {
   static BlanketPick? pick(Horse horse, BlanketAdvice advice, List<Blanket> all) {
     if (!advice.level.wearsBlanket) return null;
     final mine = all.where((b) => b.fits(horse.id)).toList();
+    if (advice.level == BlanketLevel.flyRain) {
+      // Hiervoor telt alleen een vliegendeken (met regenstuk).
+      final fly = mine.where((b) => b.kind == BlanketKind.fly).toList();
+      if (fly.isEmpty) return null;
+      fly.sort((a, b) => (b.waterproof ? 1 : 0).compareTo(a.waterproof ? 1 : 0));
+      return BlanketPick(main: fly.first, level: advice.level);
+    }
     var mains = mine.where((b) => b.kind.isMain).toList();
     if (advice.waterproof) {
       mains = mains.where((b) => b.waterproof).toList();

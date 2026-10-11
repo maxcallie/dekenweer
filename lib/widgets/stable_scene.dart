@@ -432,7 +432,9 @@ class _StablePainter extends CustomPainter {
               ? '${pick.grams} g'
               : level == BlanketLevel.rainSheet
                   ? 'regen'
-                  : level.grams;
+                  : level == BlanketLevel.flyRain
+                      ? 'vlieg'
+                      : level.grams;
           _drapedBlanket(canvas, Offset(cx, plate.outerRect.bottom + 12),
               math.min(bw * 0.62, 96), color, label,
               pattern: pick?.main.pattern ?? BlanketPattern.none,

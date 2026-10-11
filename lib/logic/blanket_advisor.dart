@@ -6,6 +6,7 @@ import '../models/weather.dart';
 
 enum BlanketLevel {
   none('Geen deken', '—', Color(0xFF6E9B5A)),
+  flyRain('Vliegendeken met regenstuk', '0 g', Color(0xFF3FAFA0)),
   rainSheet('Regendeken', '0 g', Color(0xFF5B9BC8)),
   light('Lichte deken', '50–100 g', Color(0xFFD8B33F)),
   medium('Middelzware deken', '150–200 g', Color(0xFFE08A3C)),
@@ -108,6 +109,9 @@ class BlanketAdvice {
           '${level.wearsBlanket ? ' · ${level.grams}' : ''}';
     }
     if (!level.wearsBlanket) return 'Je paard redt zich prima met zijn eigen vacht';
+    if (level == BlanketLevel.flyRain) {
+      return 'Warm en nat · houdt de rug droog';
+    }
     final parts = [
       level.grams,
       if (waterproof) 'waterdicht' else 'staldeken mag ook',
@@ -126,6 +130,12 @@ class BlanketAdvisor {
   const BlanketAdvisor([this.settings = AdviceSettings.defaults]);
 
   final AdviceSettings settings;
+
+  /// Deel van de lichte uren met zon vanaf wanneer het 'zonnig' telt …
+  static const sunnyFrom = 0.4;
+
+  /// … en 'volle zon'.
+  static const fullSunFrom = 0.75;
 
   /// [inside]: staat het paard in deze periode op stal (volgens het
   /// stalschema)? Dan telt de stal als warmer en spelen wind en regen geen rol.
@@ -162,6 +172,19 @@ class BlanketAdvisor {
     if (wetPenalty > 0) {
       eff -= wetPenalty;
       reasons.add(w.kind == WeatherKind.snow ? 'Sneeuw' : 'Nat weer');
+    }
+    // Zon: alleen overdag en buiten.
+    var sunBonus = 0.0;
+    final sun = w.sunFraction;
+    if (!stabled && !w.isNight && sun != null) {
+      if (sun >= fullSunFrom) {
+        sunBonus = settings.fullSun;
+        if (sunBonus > 0) reasons.add('Volle zon +${sunBonus.round()}°');
+      } else if (sun >= sunnyFrom) {
+        sunBonus = settings.sunny;
+        if (sunBonus > 0) reasons.add('Zonnig +${sunBonus.round()}°');
+      }
+      eff += sunBonus;
     }
     if (stabled) {
       eff += settings.stable;
@@ -211,23 +234,8 @@ class BlanketAdvisor {
     }
     if (horse.clip != ClipType.none) reasons.add(horse.clip.label);
 
-    var level = levelFor(horse.clip, eff);
     final outsideWet = !stabled && w.isWet;
-
-    // Een ongeschoren paard heeft bij droog weer geen regendeken nodig.
-    if (level == BlanketLevel.rainSheet &&
-        horse.clip == ClipType.none &&
-        !outsideWet) {
-      level = BlanketLevel.none;
-    }
-
-    // Een geschoren paard dat buiten in de regen staat: altijd iets waterdichts.
-    if (level == BlanketLevel.none &&
-        outsideWet &&
-        horse.clip != ClipType.none &&
-        base < 16) {
-      level = BlanketLevel.rainSheet;
-    }
+    final level = levelForWeather(horse.clip, eff, wet: outsideWet, base: base);
 
     final neck = !stabled &&
         (level.index >= BlanketLevel.heavy.index ||
@@ -235,11 +243,10 @@ class BlanketAdvisor {
 
     // --- Aandachtspunten ---------------------------------------------
     if (!w.isNight && w.maxTemp - w.minTemp >= 9 && level.wearsBlanket) {
-      var warmLevel = levelFor(horse.clip, eff + (w.maxTemp - base));
-      // Zelfde regel als hierboven: zonder regen geen regendeken voor een
-      // ongeschoren paard, en op stal nooit.
-      if (warmLevel == BlanketLevel.rainSheet &&
-          (stabled || (horse.clip == ClipType.none && !outsideWet))) {
+      var warmLevel =
+          levelForWeather(horse.clip, eff + (w.maxTemp - base), wet: outsideWet);
+      // Op stal nooit een regendeken.
+      if (warmLevel == BlanketLevel.rainSheet && stabled) {
         warmLevel = BlanketLevel.none;
       }
       if (warmLevel.index < level.index) {
@@ -249,7 +256,10 @@ class BlanketAdvisor {
             'rond het middaguur genoeg.');
       }
     }
-    if (level.wearsBlanket) {
+    if (level == BlanketLevel.flyRain) {
+      notes.add('Warm en nat: een vliegendeken met regenstuk houdt rug en '
+          'lendenen droog zonder dat je paard het te warm krijgt.');
+    } else if (level.wearsBlanket) {
       notes.add(BlanketAdvice.feelNote);
     }
     if (stabled && level.wearsBlanket) {
@@ -284,6 +294,38 @@ class BlanketAdvisor {
       notes: notes,
       inside: stabled,
     );
+  }
+
+  /// Het advies voor deze effectieve temperatuur, rekening houdend met het
+  /// weer: een regendeken die alleen bij nat weer hoort, en de vliegendeken
+  /// met regenstuk bij warm, nat weer. [wet]: staat het paard buiten in de
+  /// regen of sneeuw?
+  ///
+  /// [base] is de temperatuur zonder correcties: een geschoren paard in de
+  /// regen krijgt onder 16 °C altijd iets waterdichts.
+  BlanketLevel levelForWeather(ClipType clip, double eff,
+      {required bool wet, double? base}) {
+    final level = levelFor(clip, eff);
+    // Regendeken alleen bij nat weer (instelbaar per scheerstatus).
+    if (level == BlanketLevel.rainSheet && !wet && settings.rainOnlyWetFor(clip)) {
+      return BlanketLevel.none;
+    }
+    // Warm en nat: vliegendeken met regenstuk, tot de ingestelde bovengrens.
+    if (level == BlanketLevel.none &&
+        wet &&
+        settings.flyRain &&
+        eff < settings.flyRainUpToFor(clip)) {
+      return BlanketLevel.flyRain;
+    }
+    // Een geschoren paard dat buiten in de regen staat: altijd iets waterdichts.
+    if (level == BlanketLevel.none &&
+        wet &&
+        clip != ClipType.none &&
+        base != null &&
+        base < 16) {
+      return BlanketLevel.rainSheet;
+    }
+    return level;
   }
 
   /// Opzoektabel: effectieve temperatuur → dekengewicht, per scheertype.

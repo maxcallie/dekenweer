@@ -15,6 +15,8 @@ class AdviceSettingsScreen extends StatefulWidget {
 
 class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
   double _exampleTemp = 5;
+  bool _exampleWet = false;
+  int _exampleSun = 0; // 0 = bewolkt, 1 = zonnig, 2 = volle zon
 
   static const _rowLabels = [
     BlanketLevel.none,
@@ -26,10 +28,14 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
 
   String _deg(double v) => '${v.round()}°C';
 
-  /// Bij droog weer heeft een ongeschoren paard geen regendeken nodig.
-  BlanketLevel _exampleLevel(BlanketAdvisor advisor, ClipType clip) {
-    final l = advisor.levelFor(clip, _exampleTemp);
-    return clip == ClipType.none && l == BlanketLevel.rainSheet ? BlanketLevel.none : l;
+  /// Het voorbeeld: dezelfde regels als het echte advies (regendeken alleen
+  /// bij nat weer, vliegendeken met regenstuk), voor een standaardpaard.
+  BlanketLevel _exampleLevel(BlanketAdvisor advisor, AdviceSettings s, ClipType clip) {
+    var eff = _exampleTemp;
+    if (_exampleWet) eff -= s.wet;
+    if (_exampleSun == 1) eff += s.sunny;
+    if (_exampleSun == 2) eff += s.fullSun;
+    return advisor.levelForWeather(clip, eff, wet: _exampleWet, base: _exampleTemp);
   }
 
   @override
@@ -52,7 +58,7 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                       builder: (c) => AlertDialog(
                         title: const Text('Standaard herstellen?'),
                         content: const Text(
-                            'Alle grenzen en correcties gaan terug naar de standaardwaarden.'),
+                            'Alle grenzen, correcties en schakelaars gaan terug naar de standaardwaarden.'),
                         actions: [
                           TextButton(
                               onPressed: () => Navigator.pop(c, false),
@@ -104,13 +110,45 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(children: [
                     Expanded(child: Text(clip.label)),
-                    _LevelLabel(_exampleLevel(advisor, clip)),
+                    _LevelLabel(_exampleLevel(advisor, s, clip)),
                   ]),
                 ),
-              const SizedBox(height: 4),
-              const Text('Droog, windstil en zonder correcties voor het paard.',
-                  style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                FilterChip(
+                  label: const Text('Regen'),
+                  avatar: const Icon(Icons.umbrella, size: 16),
+                  selected: _exampleWet,
+                  onSelected: (v) => setState(() => _exampleWet = v),
+                ),
+                for (final (i, l) in const [(0, 'Bewolkt'), (1, 'Zonnig'), (2, 'Volle zon')])
+                  ChoiceChip(
+                    label: Text(l),
+                    selected: _exampleSun == i,
+                    onSelected: (_) => setState(() => _exampleSun = i),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              Text(
+                  '${_exampleWet ? 'Regen' : 'Droog'}, windstil, overdag en zonder '
+                  'correcties voor het paard.',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             ]),
+          ),
+
+          // ---- Vliegendeken met regenstuk --------------------------------
+          const SizedBox(height: 16),
+          _Card(
+            padding: EdgeInsets.zero,
+            child: SwitchListTile(
+              secondary: _Dot(BlanketLevel.flyRain.color),
+              title: const Text('Vliegendeken met regenstuk'),
+              subtitle: const Text(
+                  'Bij warm, nat weer: houdt de rug droog zonder dat je paard het '
+                  'te warm krijgt. Zet uit als je er geen hebt.'),
+              value: s.flyRain,
+              onChanged: (v) => save(s.copyWith(flyRain: v)),
+            ),
           ),
 
           // ---- Grenzen per scheertype -------------------------------------
@@ -122,12 +160,37 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
             _Card(
               padding: EdgeInsets.zero,
               child: Column(children: [
+                if (s.flyRain) ...[
+                  _StepRow(
+                    dot: BlanketLevel.flyRain.color,
+                    label: 'Vliegendeken met regenstuk',
+                    hint: 'alleen bij regen · ondergrens is die van Geen deken',
+                    prefix: 'vanaf',
+                    value: _deg(s.thresholdsFor(clip)[0]),
+                    onMinus: () => save(
+                        s.withThreshold(clip, 0, s.thresholdsFor(clip)[0] - 1)),
+                    onPlus: () => save(
+                        s.withThreshold(clip, 0, s.thresholdsFor(clip)[0] + 1)),
+                  ),
+                  _StepRow(
+                    indent: true,
+                    label: 'Bovengrens',
+                    hint: 'daarboven bij regen geen deken',
+                    prefix: 'tot',
+                    value: _deg(s.flyRainUpToFor(clip)),
+                    onMinus: () => save(
+                        s.withFlyRainUpTo(clip, s.flyRainUpToFor(clip) - 1)),
+                    onPlus: () => save(
+                        s.withFlyRainUpTo(clip, s.flyRainUpToFor(clip) + 1)),
+                  ),
+                  const Divider(height: 1, color: AppColors.line),
+                ],
                 for (var i = 0; i < 5; i++) ...[
                   if (i > 0) const Divider(height: 1, color: AppColors.line),
                   _StepRow(
                     dot: _rowLabels[i].color,
                     label: _rowLabels[i].label,
-                    hint: i == 1 && clip == ClipType.none ? 'alleen bij nat weer' : null,
+                    hint: i == 1 && s.rainOnlyWetFor(clip) ? 'alleen bij nat weer' : null,
                     prefix: 'vanaf',
                     value: _deg(s.thresholdsFor(clip)[i]),
                     onMinus: () => save(
@@ -135,6 +198,18 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                     onPlus: () => save(
                         s.withThreshold(clip, i, s.thresholdsFor(clip)[i] + 1)),
                   ),
+                  if (i == 1)
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.fromLTRB(36, 0, 14, 4),
+                      title: const Text('Regendeken alleen bij nat weer',
+                          style: TextStyle(fontSize: 14)),
+                      subtitle: Text(s.rainOnlyWetFor(clip)
+                          ? 'Bij droog weer: geen deken'
+                          : 'Ook bij droog weer (houdt wind tegen en de vacht droog)'),
+                      value: s.rainOnlyWetFor(clip),
+                      onChanged: (v) => save(s.withRainOnlyWet(clip, v)),
+                    ),
                 ],
                 const Divider(height: 1, color: AppColors.line),
                 Padding(
@@ -193,6 +268,26 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               ),
               const Divider(height: 1, color: AppColors.line),
               _StepRow(
+                icon: Icons.wb_cloudy_outlined,
+                label: 'Zonnig',
+                hint: 'overdag, deels zonnig',
+                value: '+${s.sunny.round()}°',
+                onMinus: () => save(s.copyWith(sunny: (s.sunny - 1).clamp(0.0, 10.0))),
+                onPlus: () => save(s.copyWith(sunny: (s.sunny + 1).clamp(0.0, 10.0))),
+              ),
+              const Divider(height: 1, color: AppColors.line),
+              _StepRow(
+                icon: Icons.wb_sunny,
+                label: 'Volle zon',
+                hint: 'overdag, (bijna) onbewolkt',
+                value: '+${s.fullSun.round()}°',
+                onMinus: () =>
+                    save(s.copyWith(fullSun: (s.fullSun - 1).clamp(0.0, 12.0))),
+                onPlus: () =>
+                    save(s.copyWith(fullSun: (s.fullSun + 1).clamp(0.0, 12.0))),
+              ),
+              const Divider(height: 1, color: AppColors.line),
+              _StepRow(
                 icon: Icons.house_siding,
                 label: 'Op stal',
                 hint: 'warmer dan buiten, geen wind of regen',
@@ -204,6 +299,8 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
+            'Alle correcties worden bij elkaar opgeteld (bijv. volle zon +4° en '
+            'wind −2° geeft +2°). Zon telt alleen overdag en niet op stal. '
             'Met een schuilstal tellen wind en regen half mee. Wil je één paard '
             'warmer of kouder inschatten, zet dat paard dan op "heeft het snel '
             'koud" of "heeft het snel warm".',
@@ -263,6 +360,7 @@ class _StepRow extends StatelessWidget {
     required this.label,
     this.hint,
     this.prefix,
+    this.indent = false,
     required this.value,
     required this.onMinus,
     required this.onPlus,
@@ -273,6 +371,7 @@ class _StepRow extends StatelessWidget {
   final String label;
   final String? hint;
   final String? prefix;
+  final bool indent;
   final String value;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
@@ -284,6 +383,7 @@ class _StepRow extends StatelessWidget {
       child: Row(children: [
         if (dot != null) _Dot(dot!),
         if (icon != null) Icon(icon, size: 20, color: AppColors.green),
+        if (indent) const SizedBox(width: 12),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -54,7 +54,11 @@ void paintHorseFront(Canvas canvas, HorseLook look,
     canvas.restore();
 
     if (lvl.wearsBlanket && blanket != null) {
-      final b = lvl == BlanketLevel.rainSheet ? shadeColor(blanket, 0.12) : blanket;
+      final b = lvl == BlanketLevel.rainSheet
+          ? shadeColor(blanket, 0.12)
+          : lvl == BlanketLevel.flyRain
+              ? shadeColor(blanket, 0.38)
+              : blanket;
       final trim = shadeColor(b, 0.22);
       final top = Path();
       if (look.neckCover) {
