@@ -429,6 +429,129 @@ void main() {
     });
   });
 
+  group('dekenwissels per dag', () {
+    // Dag 09–18 en nacht 18–09, met een temperatuurverloop van [lo] tot [hi].
+    PeriodWeather slot({
+      required bool night,
+      required double lo,
+      required double hi,
+      double precip = 0,
+      double wind = 5,
+    }) {
+      final start = DateTime(2026, 10, 13, night ? 18 : 9);
+      final n = night ? 15 : 9;
+      final hours = [
+        for (var i = 0; i < n; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            // overdag oplopend naar hi, 's nachts aflopend naar lo
+            temp: night ? hi - (hi - lo) * i / (n - 1) : lo + (hi - lo) * i / (n - 1),
+            feels: 0,
+            precipProb: precip > 0 ? 80 : 0,
+            precip: precip,
+            code: precip > 0 ? 61 : 2,
+            wind: wind,
+            humidity: 85,
+          ),
+      ];
+      return PeriodWeather.fromHours(hours,
+          start: start,
+          end: start.add(Duration(hours: n)),
+          isNight: night,
+          label: night ? 'Avond & nacht' : 'Overdag');
+    }
+
+    test("10° / 19° droog, '1 keer': overdag geen deken, nacht volgens nachtgrenzen", () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final day = advisor.advise(h, slot(night: false, lo: 15, hi: 19));
+      final night = advisor.advise(h, slot(night: true, lo: 10, hi: 15));
+      expect(day.level, BlanketLevel.none);
+      expect(night.effectiveTemp, 10);
+      expect(night.level, BlanketLevel.none); // geen deken 's nachts vanaf 10°
+    });
+
+    test("10° / 19° droog, 'Geen': één advies voor het etmaal", () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final day = advisor.advise(h, slot(night: false, lo: 15, hi: 19));
+      final night = advisor.advise(h, slot(night: true, lo: 10, hi: 15));
+      final all = advisor.wholeDay(day, night, h.clip);
+      expect(all.level, BlanketLevel.none);
+      expect(all.wholeDay, isTrue);
+    });
+
+    test("'Geen': nachtdeken overdag te warm → lichtere deken met melding", () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      // dag gemiddeld 12 °C (regendeken), nacht 8 °C (lichte deken)
+      final day = advisor.advise(h, slot(night: false, lo: 10, hi: 14));
+      final night = advisor.advise(h, slot(night: true, lo: 8, hi: 12));
+      expect(day.level, BlanketLevel.rainSheet);
+      expect(night.level, BlanketLevel.light);
+      final all = advisor.wholeDay(day, night, h.clip);
+      expect(all.level, BlanketLevel.rainSheet);
+      expect(all.notes.first,
+          "Overdag te warm voor de lichte deken (12 °C). Kies de regendeken; 's nachts is het rond 8 °C.");
+    });
+
+    test("'Geen': nachtdeken past overdag nog → nachtdeken", () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final day = advisor.advise(h, slot(night: false, lo: 7, hi: 9)); // 8 °C: licht
+      final night = advisor.advise(h, slot(night: true, lo: 3, hi: 7)); // 3 °C: middel
+      expect(night.level, BlanketLevel.medium);
+      final all = advisor.wholeDay(day, night, h.clip);
+      // middel tot 5 °C; overdag 8 °C is te warm → lichte deken
+      expect(all.level, BlanketLevel.light);
+      final cold = advisor.wholeDay(
+          advisor.advise(h, slot(night: false, lo: 3, hi: 5)), night, h.clip);
+      expect(cold.level, BlanketLevel.medium);
+    });
+
+    test("'Geen': eigen maximum van de nachtdeken telt", () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final day = advisor.advise(h, slot(night: false, lo: 7, hi: 9)); // 8 °C: licht
+      final night = advisor.advise(h, slot(night: true, lo: 3, hi: 7)); // 3 °C: middel
+      expect(night.level, BlanketLevel.medium);
+      // eigen deken voor de nacht tot 9 °C: past overdag (8 °C) nog
+      expect(advisor.wholeDay(day, night, h.clip, nightMax: 9).level, BlanketLevel.medium);
+      // tot 7 °C: overdag te warm → lichte deken
+      expect(advisor.wholeDay(day, night, h.clip, nightMax: 7).level, BlanketLevel.light);
+    });
+
+    test("12° / 17°, regen overdag, '1 keer': overdag vliegendeken met regenstuk", () {
+      final h = Horse(id: '1', name: 'Bella');
+      final day = advisor.advise(h, slot(night: false, lo: 12, hi: 17, precip: 0.5));
+      expect(day.level, BlanketLevel.flyRain);
+    });
+
+    test('lichte regen in een paar uur telt ook als nat (regenstuk)', () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final start = DateTime(2026, 10, 13, 9);
+      final hours = [
+        for (var i = 0; i < 9; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            temp: 17, feels: 0, precipProb: 30,
+            precip: i < 3 ? 0.25 : 0, // samen 0,75 mm
+            code: 61, wind: 5, humidity: 85,
+          ),
+      ];
+      final w = PeriodWeather.fromHours(hours,
+          start: start, end: start.add(const Duration(hours: 9)),
+          isNight: false, label: 'Overdag');
+      expect(advisor.advise(h, w).level, BlanketLevel.flyRain);
+    });
+
+    test('instellingen: standaard 1 keer, 09–18, opslaan en teruglezen', () {
+      const d = AdviceSettings.defaults;
+      expect(d.blanketChanges, 1);
+      expect((d.dayStart, d.dayEnd), (9, 18));
+      final t = d.copyWith(blanketChanges: 0).withDayTimes(start: 8, end: 19);
+      final back = AdviceSettings.fromJson(t.toJson());
+      expect(back.blanketChanges, 0);
+      expect((back.dayStart, back.dayEnd), (8, 19));
+      expect(AdviceSettings.fromJson({}).blanketChanges, 1);
+    });
+  });
+
   group('zon', () {
     final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
 

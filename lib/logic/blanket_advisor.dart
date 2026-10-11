@@ -60,7 +60,35 @@ class BlanketAdvice {
     this.baseLabel = 'Temperatuur',
     this.dryTemp,
     this.flyRainRange,
+    this.wholeDay = false,
   });
+
+  /// Eén advies voor het hele etmaal (geen dekenwissels)?
+  final bool wholeDay;
+
+  /// Kopie met een aangepaste tekst, waterdichtheid of etmaal-markering.
+  BlanketAdvice copyWith({List<String>? notes, bool? waterproof, bool? wholeDay}) =>
+      BlanketAdvice(
+        level: level,
+        effectiveTemp: effectiveTemp,
+        baseTemp: baseTemp,
+        neckCover: neckCover,
+        waterproof: waterproof ?? this.waterproof,
+        reasons: reasons,
+        notes: notes ?? this.notes,
+        inside: inside,
+        userChoice: userChoice,
+        advisedLevel: advisedLevel,
+        choiceBlanketId: choiceBlanketId,
+        wet: wet,
+        sunnyWarm: sunnyWarm,
+        corrections: corrections,
+        night: night,
+        baseLabel: baseLabel,
+        dryTemp: dryTemp,
+        flyRainRange: flyRainRange,
+        wholeDay: wholeDay ?? this.wholeDay,
+      );
 
   /// Advies voor de nacht?
   final bool night;
@@ -375,7 +403,9 @@ class BlanketAdvisor {
     }
     if (horse.clip != ClipType.none) reasons.add(horse.clip.label);
 
-    final outsideWet = !stabled && w.isWet;
+    // Nat: de periode als geheel, of minstens één uur met echte neerslag
+    // (dan telt de regencorrectie ook mee, dus dan ook het regenstuk).
+    final outsideWet = !stabled && (w.isWet || w.hours.any(isWetHour));
     // Zonder de regencorrectie: het regenstuk van een vliegendeken houdt de
     // regen juist tegen.
     final dryEff = eff + wetPenalty;
@@ -490,6 +520,83 @@ class BlanketAdvisor {
       return BlanketLevel.rainSheet;
     }
     return level;
+  }
+
+  /// Bovengrens van een warmteklasse: vanaf deze temperatuur hoort er een
+  /// lichtere deken bij. Null = geen bovengrens.
+  double? classUpper(ClipType clip, BlanketLevel level) {
+    final t = settings.thresholdsFor(clip);
+    return switch (level) {
+      BlanketLevel.none => null,
+      BlanketLevel.flyRain => settings.flyRainUpToFor(clip),
+      BlanketLevel.rainSheet => t[0],
+      BlanketLevel.light => t[1],
+      BlanketLevel.medium => t[2],
+      BlanketLevel.heavy => t[3],
+      BlanketLevel.extraHeavy => t[4],
+    };
+  }
+
+  /// Eén deken voor het hele etmaal (geen dekenwissels). In principe de
+  /// zwaarste van dag en nacht (meestal de nachtdeken), tenzij die overdag te
+  /// warm is: boven het eigen maximum van de gekozen deken ([nightMax]) of
+  /// boven de grens van zijn klasse. Dan de lichtere dagdeken, met een melding.
+  BlanketAdvice wholeDay(BlanketAdvice day, BlanketAdvice night, ClipType clip,
+      {double? nightMax}) {
+    String lbl(BlanketLevel l) =>
+        l == BlanketLevel.none ? 'geen deken' : 'de ${l.label.toLowerCase()}';
+    String t(double v) => '${v.round()} °C';
+    final waterproof = day.waterproof || night.waterproof;
+    if (day.level == night.level) {
+      return night.copyWith(
+        wholeDay: true,
+        waterproof: waterproof,
+        notes: [
+          'Eén deken voor het hele etmaal: overdag ${t(day.effectiveTemp)}, '
+              "'s nachts ${t(night.effectiveTemp)}; allebei ${lbl(night.level)}.",
+          ...night.notes,
+        ],
+      );
+    }
+    if (day.level.index > night.level.index) {
+      // Overdag is er meer nodig (bijv. regen): die deken kan 's nachts ook.
+      return day.copyWith(
+        wholeDay: true,
+        waterproof: waterproof,
+        notes: [
+          'Eén deken voor het hele etmaal: overdag is ${lbl(day.level)} nodig '
+              "(${t(day.effectiveTemp)}); 's nachts ${t(night.effectiveTemp)}, dat kan er ook mee.",
+          ...day.notes,
+        ],
+      );
+    }
+    // De nachtdeken is zwaarder: past die overdag nog?
+    final upper = nightMax ?? classUpper(clip, night.level);
+    final dayTemp = night.level == BlanketLevel.flyRain
+        ? (day.dryTemp ?? day.effectiveTemp)
+        : day.effectiveTemp;
+    final tooWarm = upper != null &&
+        (nightMax != null ? dayTemp > upper : dayTemp >= upper);
+    if (tooWarm) {
+      return day.copyWith(
+        wholeDay: true,
+        waterproof: waterproof,
+        notes: [
+          'Overdag te warm voor ${lbl(night.level)} (${t(dayTemp)}). '
+              "Kies ${lbl(day.level)}; 's nachts is het rond ${t(night.effectiveTemp)}.",
+          ...day.notes,
+        ],
+      );
+    }
+    return night.copyWith(
+      wholeDay: true,
+      waterproof: waterproof,
+      notes: [
+        'Eén deken voor het hele etmaal: ${lbl(night.level)} voor de nacht '
+            '(${t(night.effectiveTemp)}). Overdag ${t(dayTemp)}, dat kan ermee.',
+        ...night.notes,
+      ],
+    );
   }
 
   /// Opzoektabel: effectieve temperatuur → dekengewicht, per scheertype.

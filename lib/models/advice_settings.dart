@@ -18,7 +18,19 @@ class AdviceSettings {
     this.flyRain = true,
     this.flyRainUpTo = defaultFlyRainUpTo,
     this.nightNone = defaultNightNone,
+    this.blanketChanges = 1,
+    this.dayStart = 9,
+    this.dayEnd = 18,
   });
+
+  /// Dekenwissels per dag: 0 = één deken voor het hele etmaal, 1 = een
+  /// dagdeken en een nachtdeken.
+  final int blanketChanges;
+
+  /// Wisseltijden (uur): de dagdeken van [dayStart] tot [dayEnd], daarna de
+  /// nachtdeken tot [dayStart] de volgende dag.
+  final int dayStart;
+  final int dayEnd;
 
   /// Per scheerstatus: 's nachts geen deken vanaf deze (gecorrigeerde)
   /// temperatuur. Daaronder gelden de normale grenzen.
@@ -95,7 +107,10 @@ class AdviceSettings {
       flyRain &&
       _eq(flyRainUpTo, defaultFlyRainUpTo) &&
       _eqB(rainOnlyWet, defaultRainOnlyWet) &&
-      _eq(nightNone, defaultNightNone);
+      _eq(nightNone, defaultNightNone) &&
+      blanketChanges == 1 &&
+      dayStart == 9 &&
+      dayEnd == 18;
 
   static bool _eqB(List<bool> a, List<bool> b) {
     if (a.length != b.length) return false;
@@ -168,6 +183,9 @@ class AdviceSettings {
     bool? flyRain,
     List<double>? flyRainUpTo,
     List<double>? nightNone,
+    int? blanketChanges,
+    int? dayStart,
+    int? dayEnd,
   }) =>
       AdviceSettings(
         unclipped: unclipped ?? this.unclipped,
@@ -183,6 +201,16 @@ class AdviceSettings {
         flyRain: flyRain ?? this.flyRain,
         flyRainUpTo: flyRainUpTo ?? this.flyRainUpTo,
         nightNone: nightNone ?? this.nightNone,
+        blanketChanges: blanketChanges ?? this.blanketChanges,
+        dayStart: dayStart ?? this.dayStart,
+        dayEnd: dayEnd ?? this.dayEnd,
+      );
+
+  /// Wisseltijden aanpassen: dag begint tussen 4 en 12 uur, eindigt tussen
+  /// 14 en 22 uur.
+  AdviceSettings withDayTimes({int? start, int? end}) => copyWith(
+        dayStart: (start ?? dayStart).clamp(4, 12),
+        dayEnd: (end ?? dayEnd).clamp(14, 22),
       );
 
   Map<String, dynamic> toJson() => {
@@ -199,6 +227,9 @@ class AdviceSettings {
         'flyRain': flyRain,
         'flyRainUpTo': flyRainUpTo,
         'nightNone': nightNone,
+        'blanketChanges': blanketChanges,
+        'dayStart': dayStart,
+        'dayEnd': dayEnd,
       };
 
   factory AdviceSettings.fromJson(Map<String, dynamic> j) {
@@ -233,6 +264,9 @@ class AdviceSettings {
       rainOnlyWet: bools(j['rainOnlyWet'], defaultRainOnlyWet),
       flyRain: j['flyRain'] is bool ? j['flyRain'] as bool : true,
       nightNone: list(j['nightNone'], defaultNightNone),
+      blanketChanges: (j['blanketChanges'] as num?)?.toInt().clamp(0, 1) ?? 1,
+      dayStart: (j['dayStart'] as num?)?.toInt().clamp(4, 12) ?? 9,
+      dayEnd: (j['dayEnd'] as num?)?.toInt().clamp(14, 22) ?? 18,
     ).withFlyRainUpToList(list(j['flyRainUpTo'], defaultFlyRainUpTo));
   }
 

@@ -92,6 +92,57 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // ---- Dekenwissels -----------------------------------------------
+          const Text('Dekenwissels per dag',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          _Card(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Geen')),
+                    ButtonSegment(value: 1, label: Text('1 keer')),
+                  ],
+                  selected: {s.blanketChanges},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (v) => save(s.copyWith(blanketChanges: v.first)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                s.blanketChanges == 0
+                    ? 'Eén deken voor het hele etmaal. De app kiest de deken voor de '
+                        'nacht, tenzij die overdag te warm is; dan de lichtere, met een melding.'
+                    : 'Een dagdeken en een nachtdeken.',
+                style: const TextStyle(fontSize: 13, color: AppColors.muted, height: 1.35),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          _Card(
+            padding: EdgeInsets.zero,
+            child: Column(children: [
+              _StepRow(
+                icon: Icons.wb_sunny,
+                label: s.blanketChanges == 0 ? 'Dag begint om' : 'Dagdeken vanaf',
+                value: '${s.dayStart.toString().padLeft(2, '0')}:00',
+                onMinus: () => save(s.withDayTimes(start: s.dayStart - 1)),
+                onPlus: () => save(s.withDayTimes(start: s.dayStart + 1)),
+              ),
+              const Divider(height: 1, color: AppColors.line),
+              _StepRow(
+                icon: Icons.bedtime,
+                label: s.blanketChanges == 0 ? 'Nacht begint om' : 'Nachtdeken vanaf',
+                value: '${s.dayEnd.toString().padLeft(2, '0')}:00',
+                onMinus: () => save(s.withDayTimes(end: s.dayEnd - 1)),
+                onPlus: () => save(s.withDayTimes(end: s.dayEnd + 1)),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 22),
+
           // ---- Voorbeeld ------------------------------------------------
           _Card(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

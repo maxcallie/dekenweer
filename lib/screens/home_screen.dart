@@ -455,24 +455,25 @@ class _DayChip extends StatelessWidget {
   }
 }
 
-/// Ochtend / Middag / Avond & nacht.
+/// Dekenperiodes van de dag: Overdag / Avond & nacht, of Hele etmaal
+/// (afhankelijk van het aantal dekenwissels per dag).
 class _PhaseBar extends StatelessWidget {
   const _PhaseBar({required this.app});
   final AppState app;
 
   @override
   Widget build(BuildContext context) {
+    final sel = app.selectedSlot;
     return _Glass(
       radius: 24,
       padding: const EdgeInsets.all(5),
       child: Row(children: [
-        for (final p in DayPhase.values)
+        for (final p in app.slots)
           Expanded(
-            flex: p == DayPhase.evening ? 5 : 4,
             child: GestureDetector(
               onTap: () {
                 Haptics.select();
-                app.selectPhase(p);
+                app.selectSlot(p);
               },
               behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
@@ -481,13 +482,11 @@ class _PhaseBar extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
                 decoration: BoxDecoration(
-                  color: p == app.selectedPhase ? AppColors.green : Colors.transparent,
+                  color: p == sel ? AppColors.green : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(p.icon,
-                      size: 18,
-                      color: p == app.selectedPhase ? Colors.white : AppColors.ink),
+                  Icon(p.icon, size: 18, color: p == sel ? Colors.white : AppColors.ink),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Column(
@@ -501,19 +500,19 @@ class _PhaseBar extends StatelessWidget {
                                 fontSize: 13,
                                 height: 1.1,
                                 fontWeight: FontWeight.w700,
-                                color: p == app.selectedPhase ? Colors.white : AppColors.ink)),
+                                color: p == sel ? Colors.white : AppColors.ink)),
                         Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(p.range,
+                          Text(app.slotRange(p),
                               style: TextStyle(
                                   fontSize: 10,
                                   height: 1.1,
-                                  color: (p == app.selectedPhase ? Colors.white : AppColors.ink)
+                                  color: (p == sel ? Colors.white : AppColors.ink)
                                       .withValues(alpha: 0.75))),
-                          if (app.anyInside(app.selectedDay, p)) ...[
+                          if (app.anyInsideInSlot(app.selectedDay, p)) ...[
                             const SizedBox(width: 3),
                             Icon(Icons.house_siding,
                                 size: 11,
-                                color: (p == app.selectedPhase ? Colors.white : AppColors.ink)
+                                color: (p == sel ? Colors.white : AppColors.ink)
                                     .withValues(alpha: 0.75)),
                           ],
                         ]),
@@ -528,10 +527,6 @@ class _PhaseBar extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Onderste paneel
-// ---------------------------------------------------------------------------
 
 class _Sheet extends StatelessWidget {
   const _Sheet({required this.controller});
@@ -575,14 +570,14 @@ class _Sheet extends StatelessWidget {
                   color: AppColors.green.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(app.selectedPhase.label,
+                child: Text(app.selectedSlot.label,
                     style: const TextStyle(
                         color: AppColors.green, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
           ]),
           if (period != null) ...[
             const SizedBox(height: 4),
-            Text(_periodText(app.selectedDay, app.selectedPhase),
+            Text(_periodText(app.selectedDay, app.slotHours(app.selectedSlot)),
                 style: const TextStyle(color: AppColors.muted, fontSize: 14)),
           ],
           const SizedBox(height: 14),
@@ -679,10 +674,10 @@ class _Sheet extends StatelessWidget {
     );
   }
 
-  static String _periodText(DateTime day, DayPhase phase) {
+  static String _periodText(DateTime day, (int, int) hours) {
     String hm(int h) => '${(h % 24).toString().padLeft(2, '0')}:00';
     return '${weekdayLong[day.weekday - 1]} ${day.day} ${monthShort[day.month - 1]} · '
-        '${hm(phase.startHour)} – ${hm(phase.endHour)}';
+        '${hm(hours.$1)} – ${hm(hours.$2)}';
   }
 }
 
@@ -859,7 +854,7 @@ class _Condition extends StatelessWidget {
   }
 }
 
-/// Per paard de deken voor ochtend, middag en avond van de gekozen dag.
+/// Per paard de deken per dekenperiode (1 of 2) van de gekozen dag.
 class _DayOverview extends StatelessWidget {
   const _DayOverview({required this.app});
   final AppState app;
@@ -867,19 +862,19 @@ class _DayOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final periods = {
-      for (final p in DayPhase.values) p: app.periodFor(app.selectedDay, p),
+      for (final p in app.slots) p: app.slotPeriod(app.selectedDay, p),
     };
-    Widget cell(DayPhase p, Widget child) => GestureDetector(
+    Widget cell(AdviceSlot p, Widget child) => GestureDetector(
           onTap: () {
             Haptics.select();
-            app.selectPhase(p);
+            app.selectSlot(p);
           },
           behavior: HitTestBehavior.opaque,
           child: Container(
             width: 64,
             padding: const EdgeInsets.symmetric(vertical: 4),
             decoration: BoxDecoration(
-              color: p == app.selectedPhase
+              color: p == app.selectedSlot
                   ? AppColors.green.withValues(alpha: 0.08)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
@@ -898,14 +893,14 @@ class _DayOverview extends StatelessWidget {
       child: Column(children: [
         Row(children: [
           const Spacer(),
-          for (final p in DayPhase.values)
+          for (final p in app.slots)
             cell(
               p,
               Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(p.icon,
                     size: 18,
-                    color: p == app.selectedPhase ? AppColors.green : AppColors.muted),
-                if (app.anyInside(app.selectedDay, p))
+                    color: p == app.selectedSlot ? AppColors.green : AppColors.muted),
+                if (app.anyInsideInSlot(app.selectedDay, p))
                   const Icon(Icons.house_siding, size: 13, color: AppColors.muted),
               ]),
             ),
@@ -930,12 +925,12 @@ class _DayOverview extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             ),
-            for (final p in DayPhase.values)
+            for (final p in app.slots)
               cell(
                 p,
                 periods[p] == null
                     ? const Text('–')
-                    : BlanketBadge(app.adviceAt(h, app.selectedDay, p)!.level),
+                    : BlanketBadge(app.adviceInSlot(h, app.selectedDay, p)!.level),
               ),
           ]),
         ],
@@ -984,7 +979,7 @@ class _WeekList extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
               child: Row(children: [
                 const Spacer(),
-                for (final p in DayPhase.values)
+                for (final p in app.slots)
                   SizedBox(
                       width: 22,
                       child: Icon(p.icon, size: 14, color: AppColors.muted)),
@@ -1052,16 +1047,16 @@ class _DayRow extends StatelessWidget {
               style: const TextStyle(fontSize: 13),
             ),
           ),
-          // per fase een gekleurd bolletje met het dekengewicht
+          // per dekenperiode (1 of 2) een gekleurd bolletje met het dekengewicht
           if (horse != null)
-            for (final p in DayPhase.values)
+            for (final p in app.slots)
               SizedBox(
                 width: 22,
                 child: Center(
                   child: Builder(builder: (context) {
-                    final w = app.periodFor(day.date, p);
+                    final w = app.slotPeriod(day.date, p);
                     final level =
-                        w == null ? null : app.adviceAt(horse!, day.date, p)!.level;
+                        w == null ? null : app.adviceInSlot(horse!, day.date, p)?.level;
                     return Container(
                       width: 12,
                       height: 12,

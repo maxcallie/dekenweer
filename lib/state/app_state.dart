@@ -6,6 +6,7 @@ import '../logic/blanket_picker.dart';
 import '../logic/care_planner.dart';
 import '../logic/horse_share.dart';
 import '../models/advice_settings.dart';
+import '../models/advice_slot.dart';
 import '../models/blanket.dart';
 import '../models/care.dart';
 import '../models/day_phase.dart';
@@ -16,6 +17,7 @@ import '../services/storage.dart';
 import '../services/weather_service.dart';
 
 export '../models/day_phase.dart';
+export '../models/advice_slot.dart';
 export '../logic/care_planner.dart';
 export '../logic/horse_share.dart';
 export '../models/care.dart';
@@ -92,8 +94,75 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Weer voor de gekozen dag en fase.
-  PeriodWeather? get currentPeriod => periodFor(selectedDay, selectedPhase);
+  /// Weer voor de gekozen dag en dekenperiode.
+  PeriodWeather? get currentPeriod => slotPeriod(selectedDay, selectedSlot);
+
+  // ---- Dekenperiodes (dekenwissels per dag) ---------------------------
+
+  /// De dekenperiodes van een dag: één (hele etmaal) of twee (dag en nacht).
+  List<AdviceSlot> get slots => settings.blanketChanges == 0
+      ? const [AdviceSlot.allDay]
+      : const [AdviceSlot.day, AdviceSlot.night];
+
+  /// Bij welke dekenperiode hoort deze fase van de dag?
+  AdviceSlot slotOf(DayPhase phase) => settings.blanketChanges == 0
+      ? AdviceSlot.allDay
+      : phase.isNight
+          ? AdviceSlot.night
+          : AdviceSlot.day;
+
+  AdviceSlot get selectedSlot => slotOf(selectedPhase);
+
+  void selectSlot(AdviceSlot slot) {
+    selectedPhase = switch (slot) {
+      AdviceSlot.night => DayPhase.evening,
+      AdviceSlot.day => DayPhase.of(DateTime.now()).isNight
+          ? DayPhase.afternoon
+          : DayPhase.of(DateTime.now()),
+      AdviceSlot.allDay => selectedPhase,
+    };
+    notifyListeners();
+  }
+
+  /// Begin- en einduur (vanaf middernacht van de dag; > 24 = volgende dag).
+  (int, int) slotHours(AdviceSlot slot) => switch (slot) {
+        AdviceSlot.day => (settings.dayStart, settings.dayEnd),
+        AdviceSlot.night => (settings.dayEnd, settings.dayStart + 24),
+        AdviceSlot.allDay => (settings.dayStart, settings.dayStart + 24),
+      };
+
+  String slotRange(AdviceSlot slot) {
+    final (a, b) = slotHours(slot);
+    String hm(int h) => (h % 24).toString().padLeft(2, '0');
+    return '${hm(a)}–${hm(b)}';
+  }
+
+  PeriodWeather? slotPeriod(DateTime day, AdviceSlot slot) {
+    final f = forecast;
+    if (f == null) return null;
+    final d = dateOnly(day);
+    final (a, b) = slotHours(slot);
+    return f.period(
+      DateTime(d.year, d.month, d.day, a),
+      DateTime(d.year, d.month, d.day, b),
+      isNight: slot == AdviceSlot.night,
+      label: slot.label,
+    );
+  }
+
+  /// Staat het paard in deze dekenperiode op stal? Overdag alleen als het
+  /// zowel 's ochtends als 's middags binnen staat.
+  bool insideInSlot(Horse h, DateTime day, AdviceSlot slot) => switch (slot) {
+        AdviceSlot.day =>
+          insideAt(h, day, DayPhase.morning) && insideAt(h, day, DayPhase.afternoon),
+        AdviceSlot.night => insideAt(h, day, DayPhase.evening),
+        AdviceSlot.allDay => false,
+      };
+
+  bool anyInsideInSlot(DateTime day, AdviceSlot slot) => switch (slot) {
+        AdviceSlot.allDay => anyInside(day, DayPhase.evening),
+        _ => horses.any((h) => insideInSlot(h, day, slot)),
+      };
 
   WeatherService get weatherService => _weather;
 
@@ -387,12 +456,31 @@ class AppState extends ChangeNotifier {
   BlanketAdvice? adviceFor(Horse horse) =>
       adviceAt(horse, selectedDay, selectedPhase);
 
-  /// Advies voor een paard op een dag en fase, rekening houdend met het
-  /// stalschema en een vaste keuze voor de deken op stal.
-  BlanketAdvice? adviceAt(Horse horse, DateTime day, DayPhase phase) {
-    final w = periodFor(day, phase);
+  /// Advies voor een paard op een dag en fase: het advies van de
+  /// dekenperiode waar die fase in valt.
+  BlanketAdvice? adviceAt(Horse horse, DateTime day, DayPhase phase) =>
+      adviceInSlot(horse, day, slotOf(phase));
+
+  /// Advies voor een paard in een dekenperiode. Bij 'geen wissels' één deken
+  /// voor het hele etmaal, op basis van het advies voor dag en nacht.
+  BlanketAdvice? adviceInSlot(Horse horse, DateTime day, AdviceSlot slot) {
+    if (slot == AdviceSlot.allDay) {
+      final d = _slotAdvice(horse, day, AdviceSlot.day);
+      final n = _slotAdvice(horse, day, AdviceSlot.night);
+      if (d == null || n == null) return d ?? n;
+      final nightPick = n.userChoice ? null : BlanketPicker.pick(horse, n, blankets);
+      final max = nightPick != null && nightPick.main.hasOwnRange && nightPick.under == null
+          ? nightPick.main.maxTemp
+          : null;
+      return advisor.wholeDay(d, n, horse.clip, nightMax: max);
+    }
+    return _slotAdvice(horse, day, slot);
+  }
+
+  BlanketAdvice? _slotAdvice(Horse horse, DateTime day, AdviceSlot slot) {
+    final w = slotPeriod(day, slot);
     if (w == null) return null;
-    final inside = insideAt(horse, day, phase);
+    final inside = insideInSlot(horse, day, slot);
     final raw = advisor.advise(horse, w, inside: inside);
     final choice = horse.stableBlanket;
     if (!inside || choice == null) return raw;
