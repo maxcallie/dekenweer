@@ -88,8 +88,12 @@ class AdviceCard extends StatelessWidget {
           '${adv != null && adv != level ? ' · advies: ${adv.label.toLowerCase()}' : ''}';
     } else if (p != null) {
       title = p.label;
-      subtitle = '${level.label} · ${p.grams} g'
-          '${p.matches ? '' : p.offset < 0 ? ' · iets lichter dan advies' : ' · iets zwaarder dan advies'}';
+      subtitle = [
+        level.label,
+        if (level != BlanketLevel.flyRain) '${p.grams} g',
+        if (p.fitNote != null) p.fitNote!,
+        if (p.warning != null) 'niet waterdicht',
+      ].join(' · ');
     } else if (level.wearsBlanket && hasBlankets) {
       title = advice.title;
       subtitle = level == BlanketLevel.flyRain
@@ -344,10 +348,32 @@ class _ClosetCard extends StatelessWidget {
                 : level == BlanketLevel.flyRain
                 ? 'Warm en nat: deze vliegendeken met regenstuk houdt de rug droog.'
                 : p.matches
-                ? 'Past binnen het advies (${level.grams}).'
-                : 'Dit is de best passende deken die je hebt; het advies is ${level.grams}.',
+                ? p.main.hasOwnRange && p.under == null
+                    ? 'Past binnen het eigen bereik van deze deken '
+                        '(${p.main.minTemp!.round()} tot ${p.main.maxTemp!.round()}°C, '
+                        'je paard voelt ${advice.effectiveTemp.round()}°C).'
+                    : 'Past binnen het advies (${level.grams}).'
+                : 'Geen van je dekens past precies; dit is de dichtstbijzijnde: '
+                    '${p.fitNote}. Het advies is ${level.label.toLowerCase()} (${level.grams}).',
             style: const TextStyle(fontSize: 13, height: 1.35),
           ),
+          if (p.warning != null && !advice.userChoice) ...[
+            const SizedBox(height: 8),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFC8553D)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(p.warning!,
+                    style: const TextStyle(
+                        fontSize: 13, height: 1.35, fontWeight: FontWeight.w600)),
+              ),
+            ]),
+          ],
+          if (advice.sunnyWarm && p.main.sunProtect && !advice.userChoice) ...[
+            const SizedBox(height: 6),
+            const Text('Zonnig en warm: deze deken is zonwerend.',
+                style: TextStyle(fontSize: 13, color: AppColors.muted)),
+          ],
         ] else ...[
           Text(
             hasBlankets

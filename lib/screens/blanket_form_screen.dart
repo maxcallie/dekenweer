@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../logic/blanket_advisor.dart';
 import '../models/blanket.dart';
 import '../models/horse.dart';
+import '../state/app_state.dart';
 import '../ui.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/horse_painter.dart';
@@ -47,6 +48,24 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
       }
       b.kind = k;
     });
+  }
+
+  /// Startwaarden voor een eigen bereik: het bereik dat bij de vulling hoort,
+  /// volgens de adviesinstellingen voor het (eerste) paard van deze deken.
+  (double, double) _defaultRange(AppState app) {
+    final fitting = app.horses.where((h) => b.fits(h.id));
+    final horse = fitting.isEmpty ? null : fitting.first;
+    final t = app.settings.thresholdsFor(horse?.clip ?? ClipType.partial);
+    final g = b.grams;
+    return g <= 0
+        ? (t[1], t[0])
+        : g <= 125
+            ? (t[2], t[1])
+            : g <= 225
+                ? (t[3], t[2])
+                : g < 350
+                    ? (t[4], t[3])
+                    : (t[4] - 8, t[4]);
   }
 
   /// Bij welk advies past deze vulling (alleen ter info).
@@ -231,6 +250,57 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
                 value: b.neck,
                 onChanged: (v) => setState(() => b.neck = v),
               ),
+              const Divider(height: 1, color: AppColors.line),
+              SwitchListTile(
+                title: const Text('Zonwerend of reflecterend'),
+                subtitle: const Text('Gaat voor bij zon en warm weer'),
+                value: b.sunProtect,
+                onChanged: (v) => setState(() => b.sunProtect = v),
+              ),
+              if (b.kind.isMain) ...[
+                const Divider(height: 1, color: AppColors.line),
+                SwitchListTile(
+                  title: const Text('Eigen temperatuurbereik'),
+                  subtitle: Text(b.hasOwnRange
+                      ? 'Gaat voor op het bereik van de vulling'
+                      : 'Uit: bereik volgt uit de vulling (${b.grams} g)'),
+                  value: b.hasOwnRange,
+                  onChanged: (v) => setState(() {
+                    if (v) {
+                      final (lo, hi) = _defaultRange(app);
+                      b.minTemp = lo;
+                      b.maxTemp = hi;
+                    } else {
+                      b.minTemp = null;
+                      b.maxTemp = null;
+                    }
+                  }),
+                ),
+                if (b.hasOwnRange) ...[
+                  _TempStep(
+                    label: 'Vanaf',
+                    value: b.minTemp!,
+                    onChanged: (v) => setState(() {
+                      b.minTemp = v.clamp(-40.0, b.maxTemp! - 1);
+                    }),
+                  ),
+                  _TempStep(
+                    label: 'Tot',
+                    value: b.maxTemp!,
+                    onChanged: (v) => setState(() {
+                      b.maxTemp = v.clamp(b.minTemp! + 1, 40.0);
+                    }),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      'Temperatuur zoals je paard die voelt, dus na de correcties '
+                      'voor wind, regen, zon en stal.',
+                      style: TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                  ),
+                ],
+              ],
             ]),
           ),
           _Section(
@@ -332,6 +402,39 @@ const _secondColors = <Color>[
   Color(0xFF3A3F45), // antraciet
   Color(0xFFD9A441), // goud
 ];
+
+class _TempStep extends StatelessWidget {
+  const _TempStep({required this.label, required this.value, required this.onChanged});
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 6, 0),
+        child: Row(children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 15))),
+          IconButton(
+            onPressed: () => onChanged(value - 1),
+            icon: const Icon(Icons.remove_circle_outline),
+            color: AppColors.green,
+            visualDensity: VisualDensity.compact,
+          ),
+          SizedBox(
+            width: 56,
+            child: Text('${value.round()}°C',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+          IconButton(
+            onPressed: () => onChanged(value + 1),
+            icon: const Icon(Icons.add_circle_outline),
+            color: AppColors.green,
+            visualDensity: VisualDensity.compact,
+          ),
+        ]),
+      );
+}
 
 class _KindRow extends StatelessWidget {
   const _KindRow({required this.kind, required this.selected, required this.onTap});

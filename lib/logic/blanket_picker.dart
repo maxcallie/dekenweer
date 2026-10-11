@@ -7,11 +7,23 @@ import 'blanket_advisor.dart';
 /// De deken (eventueel met onderdeken) uit je eigen dekenkast die het
 /// best past bij het advies.
 class BlanketPick {
-  const BlanketPick({required this.main, this.under, required this.level});
+  const BlanketPick({
+    required this.main,
+    this.under,
+    required this.level,
+    this.fit = 0,
+    this.warning,
+  });
 
   final Blanket main;
   final Blanket? under;
   final BlanketLevel level;
+
+  /// −1 = te licht, 0 = past, +1 = te zwaar.
+  final int fit;
+
+  /// Waarschuwing, bijv. als de deken niet waterdicht is terwijl dat wel moet.
+  final String? warning;
 
   int get grams => main.grams + (under?.grams ?? 0);
   bool get neck => main.neck || (under?.neck ?? false);
@@ -19,15 +31,20 @@ class BlanketPick {
 
   String get label => under == null ? main.name : '${main.name} + ${under!.name}';
 
-  /// Valt het totale gewicht binnen het geadviseerde bereik?
-  bool get matches => BlanketPicker.distance(level, grams) <= 50;
+  /// Past de deken bij het advies?
+  bool get matches => fit == 0;
 
   /// Te licht (negatief) of te zwaar (positief) t.o.v. het advies.
-  int get offset {
-    final target = BlanketPicker.targetGrams(level);
-    if (level == BlanketLevel.extraHeavy && grams >= 350) return 0;
-    return grams - target;
-  }
+  int get offset => fit;
+
+  /// Korte melding als de deken niet precies past.
+  String? get fitNote => switch (fit) {
+        < 0 => under == null
+            ? 'iets te licht, overweeg een fleece of onderdeken eronder'
+            : 'iets te licht',
+        > 0 => 'iets te zwaar, voel of je paard niet gaat zweten',
+        _ => null,
+      };
 }
 
 class BlanketPicker {
@@ -58,8 +75,14 @@ class BlanketPicker {
     return (grams - targetGrams(l)).abs();
   }
 
+  /// Ongeveer hoeveel gram vulling één graad warmte is.
+  static const gramsPerDegree = 17.0;
+
   /// Kiest de best passende deken of combinatie voor dit paard.
   /// Geeft `null` als er geen deken nodig is of geen enkele deken past.
+  ///
+  /// Dekens met een eigen temperatuurbereik worden vergeleken met de
+  /// gevoelstemperatuur van het advies; de andere op hun vulling.
   static BlanketPick? pick(Horse horse, BlanketAdvice advice, List<Blanket> all) {
     if (!advice.level.wearsBlanket) return null;
     final mine = all.where((b) => b.fits(horse.id)).toList();
@@ -67,34 +90,77 @@ class BlanketPicker {
       // Hiervoor telt alleen een vliegendeken (met regenstuk).
       final fly = mine.where((b) => b.kind == BlanketKind.fly).toList();
       if (fly.isEmpty) return null;
-      fly.sort((a, b) => (b.waterproof ? 1 : 0).compareTo(a.waterproof ? 1 : 0));
+      int rank(Blanket b) => (b.waterproof ? 2 : 0) + (advice.sunnyWarm && b.sunProtect ? 1 : 0);
+      fly.sort((a, b) => rank(b).compareTo(rank(a)));
       return BlanketPick(main: fly.first, level: advice.level);
     }
     var mains = mine.where((b) => b.kind.isMain).toList();
-    if (advice.waterproof) {
-      mains = mains.where((b) => b.waterproof).toList();
-    }
     if (mains.isEmpty) return null;
+    // Buiten alleen waterdichte dekens, behalve als je die niet hebt.
+    var notWaterproof = false;
+    if (advice.waterproof) {
+      final dry = mains.where((b) => b.waterproof).toList();
+      if (dry.isEmpty) {
+        notWaterproof = true;
+      } else {
+        mains = dry;
+      }
+    }
     final unders = mine.where((b) => b.kind == BlanketKind.under).toList();
 
-    final options = <BlanketPick>[
-      for (final m in mains) BlanketPick(main: m, level: advice.level),
+    // (fit, afstand) voor een combinatie.
+    (int, double) measure(Blanket m, Blanket? u) {
+      if (m.hasOwnRange) {
+        final extra = (u?.grams ?? 0) / gramsPerDegree;
+        final lo = m.minTemp! - extra, hi = m.maxTemp! - extra;
+        final eff = advice.effectiveTemp;
+        if (eff < lo) return (-1, (lo - eff) * gramsPerDegree);
+        if (eff > hi) return (1, (eff - hi) * gramsPerDegree);
+        return (0, 0);
+      }
+      final g = m.grams + (u?.grams ?? 0);
+      final d = distance(advice.level, g).toDouble();
+      if (d <= 50) return (0, d);
+      final heavier = advice.level == BlanketLevel.extraHeavy
+          ? g >= 350
+          : g > targetGrams(advice.level);
+      return (heavier ? 1 : -1, d);
+    }
+
+    final options = <(Blanket, Blanket?)>[
+      for (final m in mains) (m, null),
       if (advice.level.index >= BlanketLevel.light.index)
         for (final m in mains)
-          for (final u in unders)
-            BlanketPick(main: m, under: u, level: advice.level),
+          for (final u in unders) (m, u),
     ];
 
-    double score(BlanketPick p) {
-      var s = distance(advice.level, p.grams).toDouble();
-      if (advice.neckCover && !p.neck) s += 30;
-      if (!advice.neckCover && p.neck) s += 5;
-      if (p.under != null) s += 20; // liever één deken dan twee lagen
-      if (!advice.waterproof && p.main.kind != BlanketKind.stable) s += 10;
+    double score((Blanket, Blanket?) o) {
+      final (m, u) = o;
+      var s = measure(m, u).$2;
+      final neck = m.neck || (u?.neck ?? false);
+      if (advice.neckCover && !neck) s += 30;
+      if (!advice.neckCover && neck) s += 5;
+      if (u != null) s += 20; // liever één deken dan twee lagen
+      if (!advice.waterproof && m.kind != BlanketKind.stable) s += 10;
+      // Zon en warm: een zonwerende deken gaat voor.
+      if (advice.sunnyWarm && m.sunProtect) s -= 25;
       return s;
     }
 
     options.sort((a, b) => score(a).compareTo(score(b)));
-    return options.first;
+    final (m, u) = options.first;
+    return BlanketPick(
+      main: m,
+      under: u,
+      level: advice.level,
+      fit: measure(m, u).$1,
+      warning: notWaterproof
+          ? advice.wet
+              ? 'Let op: het regent en je hebt geen waterdichte deken. '
+                  '${m.name} is niet waterdicht.'
+              : 'Let op: ${m.name} is niet waterdicht. Buiten is een waterdichte '
+                  'deken beter.'
+          : null,
+    );
   }
 }

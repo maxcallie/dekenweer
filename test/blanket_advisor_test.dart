@@ -178,6 +178,76 @@ void main() {
     });
   });
 
+  group('eigen dekens uitgebreid', () {
+    final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
+
+    test('bij regen geen waterdichte: toch de dichtstbijzijnde, met waarschuwing', () {
+      final stal = Blanket(
+          id: 's', name: 'Staldeken', kind: BlanketKind.stable, grams: 200, waterproof: false);
+      final a = advisor.advise(h, period(temp: 9, precip: 6, night: false));
+      expect(a.wet, isTrue);
+      final p = BlanketPicker.pick(h, a, [stal])!;
+      expect(p.main.id, 's');
+      expect(p.warning, contains('regent'));
+    });
+
+    test('waterdicht gaat voor bij regen', () {
+      final stal = Blanket(
+          id: 's', name: 'Staldeken', kind: BlanketKind.stable, grams: 200, waterproof: false);
+      final rain = Blanket(id: 'r', name: 'Regen', kind: BlanketKind.rain, grams: 0);
+      final a = advisor.advise(h, period(temp: 9, precip: 6, night: false));
+      final p = BlanketPicker.pick(h, a, [stal, rain])!;
+      expect(p.main.waterproof, isTrue);
+      expect(p.warning, isNull);
+    });
+
+    test('eigen bereik gaat voor op de vulling', () {
+      final a = advisor.advise(h, period(temp: 6, night: false)); // middel, voelt 6 °C
+      expect(a.level, BlanketLevel.medium);
+      final b200 = Blanket(id: 'b', name: 'Winter', kind: BlanketKind.turnout, grams: 200);
+      // 100 g, maar volgens de eigenaar goed van 3 tot 10 °C
+      final own = Blanket(
+          id: 'o', name: 'Eigen', kind: BlanketKind.turnout, grams: 100,
+          minTemp: 3, maxTemp: 10);
+      final p = BlanketPicker.pick(h, a, [b200, own])!;
+      expect(p.main.id, 'o');
+      expect(p.matches, isTrue);
+    });
+
+    test('te lichte deken: dichtstbijzijnde met melding', () {
+      final a = advisor.advise(h, period(temp: -6)); // extra zwaar
+      final b100 = Blanket(id: 'a', name: 'Licht', kind: BlanketKind.turnout, grams: 100);
+      final p = BlanketPicker.pick(h, a, [b100])!;
+      expect(p.fit, -1);
+      expect(p.fitNote, contains('fleece'));
+    });
+
+    test('zon en warm: zonwerende deken gaat voor', () {
+      // volledig geschoren, 'geen deken' pas vanaf 25 °C; 16 °C met volle
+      // zon voelt als 20 °C → regendeken
+      final custom = BlanketAdvisor(
+          AdviceSettings.defaults.withThreshold(ClipType.full, 0, 25));
+      final a = custom.advise(h, period(temp: 16, night: false, sun: 1));
+      expect(a.sunnyWarm, isTrue);
+      expect(a.level, BlanketLevel.rainSheet);
+      final plain = Blanket(id: 'p', name: 'Gewoon', kind: BlanketKind.rain, grams: 0);
+      final sun = Blanket(
+          id: 'z', name: 'Zon', kind: BlanketKind.rain, grams: 0, sunProtect: true);
+      expect(BlanketPicker.pick(h, a, [plain, sun])!.main.id, 'z');
+    });
+
+    test('oude opgeslagen deken: nieuwe velden standaard uit', () {
+      final b = Blanket.fromJson({'id': 'x', 'name': 'Oud', 'kind': 'turnout', 'grams': 150});
+      expect(b.sunProtect, isFalse);
+      expect(b.hasOwnRange, isFalse);
+      final back = Blanket.fromJson(
+          Blanket(id: 'y', name: 'Nieuw', sunProtect: true, minTemp: 2, maxTemp: 9).toJson());
+      expect(back.sunProtect, isTrue);
+      expect(back.minTemp, 2);
+      expect(back.maxTemp, 9);
+    });
+  });
+
   group('zon', () {
     final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
 

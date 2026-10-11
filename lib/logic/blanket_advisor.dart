@@ -34,7 +34,15 @@ class BlanketAdvice {
     this.userChoice = false,
     this.advisedLevel,
     this.choiceBlanketId,
+    this.wet = false,
+    this.sunnyWarm = false,
   });
+
+  /// Staat het paard buiten in de regen of sneeuw?
+  final bool wet;
+
+  /// Zon en warm weer (dan gaat een zonwerende deken voor).
+  final bool sunnyWarm;
 
   final BlanketLevel level;
 
@@ -136,6 +144,9 @@ class BlanketAdvisor {
 
   /// … en 'volle zon'.
   static const fullSunFrom = 0.75;
+
+  /// Vanaf deze maximumtemperatuur telt zonnig weer als 'warm'.
+  static const sunnyWarmFrom = 15.0;
 
   /// [inside]: staat het paard in deze periode op stal (volgens het
   /// stalschema)? Dan telt de stal als warmer en spelen wind en regen geen rol.
@@ -293,6 +304,8 @@ class BlanketAdvisor {
       reasons: reasons,
       notes: notes,
       inside: stabled,
+      wet: outsideWet,
+      sunnyWarm: sunBonus > 0 && w.maxTemp >= sunnyWarmFrom,
     );
   }
 

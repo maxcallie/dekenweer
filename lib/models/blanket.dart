@@ -51,6 +51,9 @@ class Blanket {
     this.pattern = BlanketPattern.none,
     this.color2Value = 0xFFE9D9A8,
     this.brand = '',
+    this.sunProtect = false,
+    this.minTemp,
+    this.maxTemp,
     List<String>? horseIds,
   }) : horseIds = horseIds ?? [];
 
@@ -73,6 +76,16 @@ class Blanket {
   /// Merknaam op de zij (leeg = niets).
   String brand;
 
+  /// Zonwerend of reflecterend (houdt de zon tegen).
+  bool sunProtect;
+
+  /// Eigen temperatuurbereik (gevoelstemperatuur voor het paard, °C). Als
+  /// beide zijn ingevuld gaat dit voor op het bereik van het dekengewicht.
+  double? minTemp;
+  double? maxTemp;
+
+  bool get hasOwnRange => minTemp != null && maxTemp != null;
+
   /// Voor welke paarden de deken past. Leeg = alle paarden.
   List<String> horseIds;
 
@@ -86,6 +99,8 @@ class Blanket {
         '$grams g',
         if (waterproof) 'waterdicht',
         if (neck) 'halsstuk',
+        if (sunProtect) 'zonwerend',
+        if (hasOwnRange) '${minTemp!.round()} tot ${maxTemp!.round()}°C',
       ].join(' · ');
 
   Blanket copy() => Blanket.fromJson(toJson());
@@ -101,6 +116,9 @@ class Blanket {
         if (pattern != BlanketPattern.none) 'pattern': pattern.name,
         if (pattern != BlanketPattern.none) 'color2': color2Value,
         if (brand.isNotEmpty) 'brand': brand,
+        if (sunProtect) 'sun': true,
+        if (hasOwnRange) 'min': minTemp,
+        if (hasOwnRange) 'max': maxTemp,
         'horses': horseIds,
       };
 
@@ -117,6 +135,9 @@ class Blanket {
             orElse: () => BlanketPattern.none),
         color2Value: (j['color2'] as num?)?.toInt() ?? 0xFFE9D9A8,
         brand: j['brand'] as String? ?? '',
+        sunProtect: j['sun'] == true,
+        minTemp: (j['min'] as num?)?.toDouble(),
+        maxTemp: (j['max'] as num?)?.toDouble(),
         horseIds: ((j['horses'] as List?) ?? const []).cast<String>().toList(),
       );
 }
