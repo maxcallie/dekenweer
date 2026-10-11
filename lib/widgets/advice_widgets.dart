@@ -375,7 +375,7 @@ class _Explanation extends StatelessWidget {
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 8),
-        row('Luchttemperatuur · ${a.baseLabel.toLowerCase()}', _t(a.baseTemp), style: bold),
+        row('Luchttemperatuur (${a.baseLabel})', _t(a.baseTemp), style: bold),
         for (final c in a.corrections)
           row(c.label, c.info ? '(${_signed(c.delta)})' : _signed(c.delta),
               style: c.info ? info : muted,

@@ -442,7 +442,7 @@ class BlanketAdvisor {
       sunnyWarm: sunBonus > 0 && w.maxTemp >= sunnyWarmFrom,
       corrections: corr,
       night: w.isNight,
-      baseLabel: w.isNight ? 'Laagste temperatuur' : 'Temperatuur overdag',
+      baseLabel: w.isNight ? 'koudste uur' : 'gemiddeld over het dagdeel',
       dryTemp: dryEff,
       flyRainRange: level == BlanketLevel.flyRain
           ? (settings.thresholdsFor(horse.clip)[0], settings.flyRainUpToFor(horse.clip))
