@@ -267,7 +267,7 @@ class _Explanation extends StatelessWidget {
   final BlanketAdvice advice;
 
   /// Waarom dit niveau: in welk bereik valt de temperatuur.
-  String _why(List<double> t) {
+  String _why(List<double> t, double nightNone) {
     final a = advice;
     final eff = a.effectiveTemp;
     final level = a.userChoice ? (a.advisedLevel ?? a.level) : a.level;
@@ -289,6 +289,10 @@ class _Explanation extends StatelessWidget {
       BlanketLevel.flyRain => ('', true),
     };
     final clip = horse.clip.label.toLowerCase();
+    if (a.night && level == BlanketLevel.none && eff < t[0] && eff >= nightNone) {
+      return "'s Nachts geen deken vanaf ${_t(nightNone)} ($clip), en voor "
+          '${horse.name} voelt het als ${_t(eff)} → geen deken.';
+    }
     if (inRange) {
       return '${_t(eff)} valt bij ${level.label.toLowerCase()} ($range, $clip).';
     }
@@ -306,7 +310,8 @@ class _Explanation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = advice;
-    final t = AppScope.of(context).settings.thresholdsFor(horse.clip);
+    final settings = AppScope.of(context).settings;
+    final t = settings.thresholdsFor(horse.clip);
     const muted = TextStyle(fontSize: 14, color: AppColors.muted);
     const bold = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
     Widget row(String label, String value, {TextStyle style = muted, String? note}) =>
@@ -348,7 +353,7 @@ class _Explanation extends StatelessWidget {
         if (flyRain && a.dryTemp != null)
           row('Zonder regencorrectie', _t(a.dryTemp!), style: bold),
         const SizedBox(height: 8),
-        Text(_why(t), style: const TextStyle(fontSize: 13, height: 1.35)),
+        Text(_why(t, settings.nightNoneFor(horse.clip)), style: const TextStyle(fontSize: 13, height: 1.35)),
       ]),
     );
   }

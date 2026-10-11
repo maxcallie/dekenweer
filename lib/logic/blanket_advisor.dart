@@ -47,10 +47,14 @@ class BlanketAdvice {
     this.wet = false,
     this.sunnyWarm = false,
     this.corrections = const [],
+    this.night = false,
     this.baseLabel = 'Temperatuur',
     this.dryTemp,
     this.flyRainRange,
   });
+
+  /// Advies voor de nacht?
+  final bool night;
 
   /// Alle correcties op de temperatuur, met hun graden.
   final List<Correction> corrections;
@@ -109,6 +113,7 @@ class BlanketAdvice {
         inside: true,
         userChoice: true,
         corrections: corrections,
+        night: night,
         baseLabel: baseLabel,
         dryTemp: dryTemp,
         advisedLevel: this.level,
@@ -302,7 +307,7 @@ class BlanketAdvisor {
     // regen juist tegen.
     final dryEff = eff + wetPenalty;
     final level = levelForWeather(horse.clip, eff,
-        wet: outsideWet, base: base, dryEff: dryEff);
+        wet: outsideWet, base: base, dryEff: dryEff, night: w.isNight);
 
     final neck = !stabled &&
         (level.index >= BlanketLevel.heavy.index ||
@@ -363,6 +368,7 @@ class BlanketAdvisor {
       wet: outsideWet,
       sunnyWarm: sunBonus > 0 && w.maxTemp >= sunnyWarmFrom,
       corrections: corr,
+      night: w.isNight,
       baseLabel: w.isNight ? 'Laagste temperatuur' : 'Temperatuur overdag',
       dryTemp: dryEff,
       flyRainRange: level == BlanketLevel.flyRain
@@ -382,8 +388,11 @@ class BlanketAdvisor {
   /// [dryEff] is dezelfde temperatuur maar zonder de regencorrectie; die
   /// bepaalt of de vliegendeken met regenstuk van toepassing is (het
   /// regenstuk beschermt tegen de regen). Zonder [dryEff] telt [eff].
+  ///
+  /// [night]: advies voor de nacht. Dan is het 'geen deken' vanaf de
+  /// ingestelde nachtgrens; daaronder gelden de normale grenzen.
   BlanketLevel levelForWeather(ClipType clip, double eff,
-      {required bool wet, double? base, double? dryEff}) {
+      {required bool wet, double? base, double? dryEff, bool night = false}) {
     // Warm en nat: vliegendeken met regenstuk, tussen 'Geen deken' en de
     // ingestelde bovengrens (temperatuur zonder regencorrectie).
     final dry = dryEff ?? eff;
@@ -393,6 +402,7 @@ class BlanketAdvisor {
         dry < settings.flyRainUpToFor(clip)) {
       return BlanketLevel.flyRain;
     }
+    if (night && eff >= settings.nightNoneFor(clip)) return BlanketLevel.none;
     final level = levelFor(clip, eff);
     // Regendeken alleen bij nat weer (instelbaar per scheerstatus).
     if (level == BlanketLevel.rainSheet && !wet && settings.rainOnlyWetFor(clip)) {

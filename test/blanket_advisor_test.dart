@@ -279,6 +279,40 @@ void main() {
     });
   });
 
+  group("geen deken 's nachts", () {
+    // Niet geschoren met strengere grenzen: geen deken vanaf 15, regendeken
+    // vanaf 10, lichte deken vanaf 5 °C; 's nachts geen deken vanaf 10 °C.
+    final s = AdviceSettings.defaults.copyWith(unclipped: AdviceSettings.defaultPartial);
+    final a = BlanketAdvisor(s);
+    final h = Horse(id: '1', name: 'Bella');
+
+    test('standaard 10 °C', () {
+      expect(AdviceSettings.defaults.nightNoneFor(ClipType.none), 10);
+    });
+
+    test('10 °C nacht droog: geen deken', () {
+      expect(a.advise(h, period(temp: 10, night: true)).level, BlanketLevel.none);
+    });
+
+    test('8 °C nacht: normale grenzen (lichte deken)', () {
+      expect(a.advise(h, period(temp: 8, night: true)).level, BlanketLevel.light);
+    });
+
+    test('overdag verandert er niets', () {
+      final off = BlanketAdvisor(s.withRainOnlyWet(ClipType.none, false));
+      expect(off.advise(h, period(temp: 12, night: false)).level, BlanketLevel.rainSheet);
+      expect(off.advise(h, period(temp: 12, night: true)).level, BlanketLevel.none);
+    });
+
+    test('instelbaar per scheerstatus', () {
+      final t = s.withNightNone(ClipType.none, 13);
+      expect(BlanketAdvisor(t).advise(h, period(temp: 12, night: true)).level,
+          isNot(BlanketLevel.none));
+      expect(t.nightNoneFor(ClipType.full), 10);
+      expect(AdviceSettings.fromJson(t.toJson()).nightNoneFor(ClipType.none), 13);
+    });
+  });
+
   group('zon', () {
     final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
 
@@ -349,6 +383,7 @@ void main() {
       expect(s.flyRainUpTo, AdviceSettings.defaultFlyRainUpTo);
       expect(s.sunny, 2);
       expect(s.fullSun, 4);
+      expect(s.nightNone, AdviceSettings.defaultNightNone);
     });
 
     test('nieuwe velden opslaan en teruglezen', () {

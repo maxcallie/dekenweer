@@ -17,7 +17,12 @@ class AdviceSettings {
     this.rainOnlyWet = defaultRainOnlyWet,
     this.flyRain = true,
     this.flyRainUpTo = defaultFlyRainUpTo,
+    this.nightNone = defaultNightNone,
   });
+
+  /// Per scheerstatus: 's nachts geen deken vanaf deze (gecorrigeerde)
+  /// temperatuur. Daaronder gelden de normale grenzen.
+  static const defaultNightNone = <double>[10, 10, 10];
 
   /// Per scheerstatus (niet / deels / volledig geschoren): regendeken alleen
   /// adviseren bij nat weer? Standaard alleen bij een ongeschoren paard, zoals
@@ -62,6 +67,15 @@ class AdviceSettings {
   /// Vliegendeken met regenstuk meenemen in het advies?
   final bool flyRain;
   final List<double> flyRainUpTo;
+  final List<double> nightNone;
+
+  double nightNoneFor(ClipType clip) => nightNone[clip.index];
+
+  AdviceSettings withNightNone(ClipType clip, double value) {
+    final n = List<double>.of(nightNone);
+    n[clip.index] = value.clamp(-40.0, 40.0);
+    return copyWith(nightNone: n);
+  }
 
   bool rainOnlyWetFor(ClipType clip) => rainOnlyWet[clip.index];
   double flyRainUpToFor(ClipType clip) => flyRainUpTo[clip.index];
@@ -80,7 +94,8 @@ class AdviceSettings {
       fullSun == 4 &&
       flyRain &&
       _eq(flyRainUpTo, defaultFlyRainUpTo) &&
-      _eqB(rainOnlyWet, defaultRainOnlyWet);
+      _eqB(rainOnlyWet, defaultRainOnlyWet) &&
+      _eq(nightNone, defaultNightNone);
 
   static bool _eqB(List<bool> a, List<bool> b) {
     if (a.length != b.length) return false;
@@ -152,6 +167,7 @@ class AdviceSettings {
     List<bool>? rainOnlyWet,
     bool? flyRain,
     List<double>? flyRainUpTo,
+    List<double>? nightNone,
   }) =>
       AdviceSettings(
         unclipped: unclipped ?? this.unclipped,
@@ -166,6 +182,7 @@ class AdviceSettings {
         rainOnlyWet: rainOnlyWet ?? this.rainOnlyWet,
         flyRain: flyRain ?? this.flyRain,
         flyRainUpTo: flyRainUpTo ?? this.flyRainUpTo,
+        nightNone: nightNone ?? this.nightNone,
       );
 
   Map<String, dynamic> toJson() => {
@@ -181,6 +198,7 @@ class AdviceSettings {
         'rainOnlyWet': rainOnlyWet,
         'flyRain': flyRain,
         'flyRainUpTo': flyRainUpTo,
+        'nightNone': nightNone,
       };
 
   factory AdviceSettings.fromJson(Map<String, dynamic> j) {
@@ -214,6 +232,7 @@ class AdviceSettings {
       // Nieuwe velden: oude opgeslagen instellingen krijgen de standaard.
       rainOnlyWet: bools(j['rainOnlyWet'], defaultRainOnlyWet),
       flyRain: j['flyRain'] is bool ? j['flyRain'] as bool : true,
+      nightNone: list(j['nightNone'], defaultNightNone),
     ).withFlyRainUpToList(list(j['flyRainUpTo'], defaultFlyRainUpTo));
   }
 

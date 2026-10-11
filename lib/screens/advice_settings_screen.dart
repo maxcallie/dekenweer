@@ -16,6 +16,7 @@ class AdviceSettingsScreen extends StatefulWidget {
 class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
   double _exampleTemp = 5;
   bool _exampleWet = false;
+  bool _exampleNight = false;
   int _exampleSun = 0; // 0 = bewolkt, 1 = zonnig, 2 = volle zon
 
   static const _rowLabels = [
@@ -32,11 +33,11 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
   /// bij nat weer, vliegendeken met regenstuk), voor een standaardpaard.
   BlanketLevel _exampleLevel(BlanketAdvisor advisor, AdviceSettings s, ClipType clip) {
     var dry = _exampleTemp;
-    if (_exampleSun == 1) dry += s.sunny;
-    if (_exampleSun == 2) dry += s.fullSun;
+    if (!_exampleNight && _exampleSun == 1) dry += s.sunny;
+    if (!_exampleNight && _exampleSun == 2) dry += s.fullSun;
     final eff = _exampleWet ? dry - s.wet : dry;
     return advisor.levelForWeather(clip, eff,
-        wet: _exampleWet, base: _exampleTemp, dryEff: dry);
+        wet: _exampleWet, base: _exampleTemp, dryEff: dry, night: _exampleNight);
   }
 
   @override
@@ -117,11 +118,18 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 FilterChip(
+                  label: const Text('Nacht'),
+                  avatar: const Icon(Icons.nightlight_round, size: 16),
+                  selected: _exampleNight,
+                  onSelected: (v) => setState(() => _exampleNight = v),
+                ),
+                FilterChip(
                   label: const Text('Regen'),
                   avatar: const Icon(Icons.umbrella, size: 16),
                   selected: _exampleWet,
                   onSelected: (v) => setState(() => _exampleWet = v),
                 ),
+                if (!_exampleNight)
                 for (final (i, l) in const [(0, 'Bewolkt'), (1, 'Zonnig'), (2, 'Volle zon')])
                   ChoiceChip(
                     label: Text(l),
@@ -131,7 +139,8 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               ]),
               const SizedBox(height: 6),
               Text(
-                  '${_exampleWet ? 'Regen' : 'Droog'}, windstil, overdag en zonder '
+                  '${_exampleWet ? 'Regen' : 'Droog'}, windstil, '
+                  '${_exampleNight ? "'s nachts" : 'overdag'} en zonder '
                   'correcties voor het paard.',
                   style: const TextStyle(fontSize: 12, color: AppColors.muted)),
             ]),
@@ -200,6 +209,20 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                     onPlus: () => save(
                         s.withThreshold(clip, i, s.thresholdsFor(clip)[i] + 1)),
                   ),
+                  if (i == 0) ...[
+                    const Divider(height: 1, color: AppColors.line),
+                    _StepRow(
+                      icon: Icons.nightlight_round,
+                      label: "Geen deken 's nachts",
+                      hint: 'daaronder de normale grenzen',
+                      prefix: 'vanaf',
+                      value: _deg(s.nightNoneFor(clip)),
+                      onMinus: () =>
+                          save(s.withNightNone(clip, s.nightNoneFor(clip) - 1)),
+                      onPlus: () =>
+                          save(s.withNightNone(clip, s.nightNoneFor(clip) + 1)),
+                    ),
+                  ],
                   if (i == 1)
                     SwitchListTile(
                       dense: true,
