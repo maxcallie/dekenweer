@@ -31,11 +31,12 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
   /// Het voorbeeld: dezelfde regels als het echte advies (regendeken alleen
   /// bij nat weer, vliegendeken met regenstuk), voor een standaardpaard.
   BlanketLevel _exampleLevel(BlanketAdvisor advisor, AdviceSettings s, ClipType clip) {
-    var eff = _exampleTemp;
-    if (_exampleWet) eff -= s.wet;
-    if (_exampleSun == 1) eff += s.sunny;
-    if (_exampleSun == 2) eff += s.fullSun;
-    return advisor.levelForWeather(clip, eff, wet: _exampleWet, base: _exampleTemp);
+    var dry = _exampleTemp;
+    if (_exampleSun == 1) dry += s.sunny;
+    if (_exampleSun == 2) dry += s.fullSun;
+    final eff = _exampleWet ? dry - s.wet : dry;
+    return advisor.levelForWeather(clip, eff,
+        wet: _exampleWet, base: _exampleTemp, dryEff: dry);
   }
 
   @override
@@ -164,7 +165,8 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                   _StepRow(
                     dot: BlanketLevel.flyRain.color,
                     label: 'Vliegendeken met regenstuk',
-                    hint: 'alleen bij regen · ondergrens is die van Geen deken',
+                    hint: 'alleen bij regen · ondergrens is die van Geen deken · '
+                        'regen telt hier niet als kouder',
                     prefix: 'vanaf',
                     value: _deg(s.thresholdsFor(clip)[0]),
                     onMinus: () => save(

@@ -49,8 +49,13 @@ void main() {
   test('ongeschoren bij 5°C droog: geen deken, nat: regendeken', () {
     final h = Horse(id: '1', name: 'Bella');
     expect(advisor.advise(h, period(temp: 6)).level, BlanketLevel.none);
+    // Zonder regencorrectie 9 °C (boven 'geen deken'): vliegendeken met
+    // regenstuk; staat die optie uit, dan de regendeken.
     expect(advisor.advise(h, period(temp: 9, precip: 6)).level,
-        BlanketLevel.rainSheet);
+        BlanketLevel.flyRain);
+    final off = BlanketAdvisor(AdviceSettings.defaults.copyWith(flyRain: false));
+    expect(off.advise(h, period(temp: 9, precip: 6)).level, BlanketLevel.rainSheet);
+    expect(advisor.advise(h, period(temp: 7, precip: 6)).level, BlanketLevel.rainSheet);
   });
 
   test('volledig geschoren bij 2°C: zwaar met halsstuk', () {
@@ -168,6 +173,32 @@ void main() {
       final turnout = Blanket(id: 't', name: 'Buiten', kind: BlanketKind.turnout, grams: 0);
       expect(BlanketPicker.pick(h, adv, [turnout, fly])!.main.id, 'f');
       expect(BlanketPicker.pick(h, adv, [turnout]), isNull);
+    });
+
+    test('regen telt niet mee voor het regenstuk (18 °C, regen, wat wind)', () {
+      // deels geschoren: 15 tot 20 °C
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final adv = advisor.advise(h, period(temp: 18, night: false, precip: 3, wind: 25));
+      // 18 − 2 (wind) − 3 (regen) = 13, zonder regen 16
+      expect(adv.effectiveTemp, 13);
+      expect(adv.dryTemp, 16);
+      expect(adv.level, BlanketLevel.flyRain);
+      expect(adv.flyRainRange, (15.0, 20.0));
+      expect(adv.corrections.map((c) => c.delta), containsAll([-2.0, -3.0]));
+      expect(adv.corrections.firstWhere((c) => c.rain).delta, -3);
+    });
+
+    test('17 °C met regen: vliegendeken, ook al zakt het met regen onder 15', () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final adv = advisor.advise(h, period(temp: 17, night: false, precip: 3));
+      expect(adv.effectiveTemp, 14);
+      expect(adv.level, BlanketLevel.flyRain);
+    });
+
+    test('zonder regencorrectie boven de bovengrens: geen deken', () {
+      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
+      final adv = advisor.advise(h, period(temp: 21, night: false, precip: 3));
+      expect(adv.level, BlanketLevel.none);
     });
 
     test('bovengrens blijft boven "geen deken"', () {

@@ -21,6 +21,16 @@ enum BlanketLevel {
   bool get wearsBlanket => this != BlanketLevel.none;
 }
 
+/// Eén correctie op de temperatuur, bijv. ('Wind 25 km/u', −2).
+class Correction {
+  const Correction(this.label, this.delta, {this.rain = false});
+  final String label;
+  final double delta;
+
+  /// Is dit de correctie voor regen of sneeuw?
+  final bool rain;
+}
+
 class BlanketAdvice {
   const BlanketAdvice({
     required this.level,
@@ -36,7 +46,23 @@ class BlanketAdvice {
     this.choiceBlanketId,
     this.wet = false,
     this.sunnyWarm = false,
+    this.corrections = const [],
+    this.baseLabel = 'Temperatuur',
+    this.dryTemp,
+    this.flyRainRange,
   });
+
+  /// Alle correcties op de temperatuur, met hun graden.
+  final List<Correction> corrections;
+
+  /// Wat [baseTemp] is (bijv. 'Laagste temperatuur').
+  final String baseLabel;
+
+  /// Gevoelstemperatuur zonder de regencorrectie.
+  final double? dryTemp;
+
+  /// Bij de vliegendeken met regenstuk: het bereik (van, tot) dat gold.
+  final (double, double)? flyRainRange;
 
   /// Staat het paard buiten in de regen of sneeuw?
   final bool wet;
@@ -82,6 +108,9 @@ class BlanketAdvice {
         ],
         inside: true,
         userChoice: true,
+        corrections: corrections,
+        baseLabel: baseLabel,
+        dryTemp: dryTemp,
         advisedLevel: this.level,
         choiceBlanketId: blanketId,
       );
@@ -154,6 +183,8 @@ class BlanketAdvisor {
       {bool inside = false, DateTime? now}) {
     final reasons = <String>[];
     final notes = <String>[];
+    // Alle correcties met hun graden, voor de uitleg bij het advies.
+    final corr = <Correction>[];
 
     final stabled = inside;
     final shelter = !inside && horse.housing == Housing.shelter;
@@ -179,10 +210,16 @@ class BlanketAdvisor {
     if (windPenalty > 0) {
       eff -= windPenalty;
       reasons.add('Wind ${w.maxWind.round()} km/u');
+      corr.add(Correction('Wind ${w.maxWind.round()} km/u${shelter ? ' (schuilstal, half)' : ''}',
+          -windPenalty));
     }
     if (wetPenalty > 0) {
       eff -= wetPenalty;
       reasons.add(w.kind == WeatherKind.snow ? 'Sneeuw' : 'Nat weer');
+      corr.add(Correction(
+          '${w.kind == WeatherKind.snow ? 'Sneeuw' : 'Regen'}${shelter ? ' (schuilstal, half)' : ''}',
+          -wetPenalty,
+          rain: true));
     }
     // Zon: alleen overdag en buiten.
     var sunBonus = 0.0;
@@ -190,16 +227,23 @@ class BlanketAdvisor {
     if (!stabled && !w.isNight && sun != null) {
       if (sun >= fullSunFrom) {
         sunBonus = settings.fullSun;
-        if (sunBonus > 0) reasons.add('Volle zon +${sunBonus.round()}°');
+        if (sunBonus > 0) {
+          reasons.add('Volle zon +${sunBonus.round()}°');
+          corr.add(Correction('Volle zon', sunBonus));
+        }
       } else if (sun >= sunnyFrom) {
         sunBonus = settings.sunny;
-        if (sunBonus > 0) reasons.add('Zonnig +${sunBonus.round()}°');
+        if (sunBonus > 0) {
+          reasons.add('Zonnig +${sunBonus.round()}°');
+          corr.add(Correction('Zonnig', sunBonus));
+        }
       }
       eff += sunBonus;
     }
     if (stabled) {
       eff += settings.stable;
       reasons.add('Op stal');
+      corr.add(Correction('Op stal', settings.stable));
     } else if (shelter && (windPenalty > 0 || wetPenalty > 0)) {
       reasons.add('Schuilstal');
     }
@@ -210,9 +254,11 @@ class BlanketAdvisor {
       case HorseType.coldblood:
         eff += 3;
         reasons.add(horse.type.label);
+        corr.add(Correction(horse.type.label, 3));
       case HorseType.hotblood:
         eff -= 2;
         reasons.add(horse.type.label);
+        corr.add(Correction(horse.type.label, -2));
       case HorseType.warmblood:
       case HorseType.baroque:
         break;
@@ -220,16 +266,20 @@ class BlanketAdvisor {
     if (horse.age >= 20) {
       eff -= 2;
       reasons.add('Senior');
+      corr.add(const Correction('Senior', -2));
     } else if (horse.age <= 2) {
       eff -= 1;
       reasons.add('Jong paard');
+      corr.add(const Correction('Jong paard', -1));
     }
     switch (horse.condition) {
       case BodyCondition.thin:
         eff -= 2;
         reasons.add('Mager');
+        corr.add(const Correction('Mager', -2));
       case BodyCondition.heavy:
         eff += 1;
+        corr.add(const Correction('Goed in het vlees', 1));
       case BodyCondition.normal:
         break;
     }
@@ -237,16 +287,22 @@ class BlanketAdvisor {
       case Sensitivity.cold:
         eff -= 3;
         reasons.add('Koukleum');
+        corr.add(const Correction('Koukleum', -3));
       case Sensitivity.warm:
         eff += 3;
         reasons.add('Heeft het snel warm');
+        corr.add(const Correction('Heeft het snel warm', 3));
       case Sensitivity.normal:
         break;
     }
     if (horse.clip != ClipType.none) reasons.add(horse.clip.label);
 
     final outsideWet = !stabled && w.isWet;
-    final level = levelForWeather(horse.clip, eff, wet: outsideWet, base: base);
+    // Zonder de regencorrectie: het regenstuk van een vliegendeken houdt de
+    // regen juist tegen.
+    final dryEff = eff + wetPenalty;
+    final level = levelForWeather(horse.clip, eff,
+        wet: outsideWet, base: base, dryEff: dryEff);
 
     final neck = !stabled &&
         (level.index >= BlanketLevel.heavy.index ||
@@ -254,8 +310,8 @@ class BlanketAdvisor {
 
     // --- Aandachtspunten ---------------------------------------------
     if (!w.isNight && w.maxTemp - w.minTemp >= 9 && level.wearsBlanket) {
-      var warmLevel =
-          levelForWeather(horse.clip, eff + (w.maxTemp - base), wet: outsideWet);
+      var warmLevel = levelForWeather(horse.clip, eff + (w.maxTemp - base),
+          wet: outsideWet, dryEff: dryEff + (w.maxTemp - base));
       // Op stal nooit een regendeken.
       if (warmLevel == BlanketLevel.rainSheet && stabled) {
         warmLevel = BlanketLevel.none;
@@ -306,6 +362,12 @@ class BlanketAdvisor {
       inside: stabled,
       wet: outsideWet,
       sunnyWarm: sunBonus > 0 && w.maxTemp >= sunnyWarmFrom,
+      corrections: corr,
+      baseLabel: w.isNight ? 'Laagste temperatuur' : 'Temperatuur overdag',
+      dryTemp: dryEff,
+      flyRainRange: level == BlanketLevel.flyRain
+          ? (settings.thresholdsFor(horse.clip)[0], settings.flyRainUpToFor(horse.clip))
+          : null,
     );
   }
 
@@ -316,19 +378,25 @@ class BlanketAdvisor {
   ///
   /// [base] is de temperatuur zonder correcties: een geschoren paard in de
   /// regen krijgt onder 16 °C altijd iets waterdichts.
+  ///
+  /// [dryEff] is dezelfde temperatuur maar zonder de regencorrectie; die
+  /// bepaalt of de vliegendeken met regenstuk van toepassing is (het
+  /// regenstuk beschermt tegen de regen). Zonder [dryEff] telt [eff].
   BlanketLevel levelForWeather(ClipType clip, double eff,
-      {required bool wet, double? base}) {
+      {required bool wet, double? base, double? dryEff}) {
+    // Warm en nat: vliegendeken met regenstuk, tussen 'Geen deken' en de
+    // ingestelde bovengrens (temperatuur zonder regencorrectie).
+    final dry = dryEff ?? eff;
+    if (wet &&
+        settings.flyRain &&
+        dry >= settings.thresholdsFor(clip)[0] &&
+        dry < settings.flyRainUpToFor(clip)) {
+      return BlanketLevel.flyRain;
+    }
     final level = levelFor(clip, eff);
     // Regendeken alleen bij nat weer (instelbaar per scheerstatus).
     if (level == BlanketLevel.rainSheet && !wet && settings.rainOnlyWetFor(clip)) {
       return BlanketLevel.none;
-    }
-    // Warm en nat: vliegendeken met regenstuk, tot de ingestelde bovengrens.
-    if (level == BlanketLevel.none &&
-        wet &&
-        settings.flyRain &&
-        eff < settings.flyRainUpToFor(clip)) {
-      return BlanketLevel.flyRain;
     }
     // Een geschoren paard dat buiten in de regen staat: altijd iets waterdichts.
     if (level == BlanketLevel.none &&

@@ -230,25 +230,7 @@ Future<void> showHorseAdvice(BuildContext context, Horse horse,
             ),
           ],
           const SizedBox(height: 16),
-          _InfoRow(
-            icon: Icons.thermostat,
-            text: 'Uitgangspunt ${advice.baseTemp.round()}°C → voor ${horse.name} '
-                'voelt het als ${advice.effectiveTemp.round()}°C',
-          ),
-          const SizedBox(height: 12),
-          if (advice.reasons.isNotEmpty)
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final r in advice.reasons)
-                  Chip(
-                    label: Text(r),
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: AppColors.card,
-                  ),
-              ],
-            ),
+          _Explanation(horse: horse, advice: advice),
           const SizedBox(height: 12),
           for (final n in advice.notes)
             Padding(
@@ -272,24 +254,101 @@ Future<void> showHorseAdvice(BuildContext context, Horse horse,
   );
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.text});
-  final IconData icon;
-  final String text;
+String _signed(double v) =>
+    v >= 0 ? '+${_num(v)}°' : '−${_num(-v)}°';
+String _num(double v) => v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+String _t(double v) => '${v.round()}°C';
+
+/// "Zo is het advies berekend": temperatuur, alle correcties en de grens
+/// waar de uitkomst in valt.
+class _Explanation extends StatelessWidget {
+  const _Explanation({required this.horse, required this.advice});
+  final Horse horse;
+  final BlanketAdvice advice;
+
+  /// Waarom dit niveau: in welk bereik valt de temperatuur.
+  String _why(List<double> t) {
+    final a = advice;
+    final eff = a.effectiveTemp;
+    final level = a.userChoice ? (a.advisedLevel ?? a.level) : a.level;
+    if (level == BlanketLevel.flyRain) {
+      final r = a.flyRainRange;
+      final dry = a.dryTemp ?? eff;
+      return 'Het regent, maar het regenstuk houdt de regen tegen. Daarom telt '
+          'regen hier niet als kouder: zonder regencorrectie ${_t(dry)}'
+          '${r != null ? ', tussen ${_t(r.$1)} en ${_t(r.$2)}' : ''} '
+          '→ vliegendeken met regenstuk.';
+    }
+    final (String range, bool inRange) = switch (level) {
+      BlanketLevel.none => ('vanaf ${_t(t[0])}', eff >= t[0]),
+      BlanketLevel.rainSheet => ('${_t(t[1])} tot ${_t(t[0])}', eff >= t[1] && eff < t[0]),
+      BlanketLevel.light => ('${_t(t[2])} tot ${_t(t[1])}', eff >= t[2] && eff < t[1]),
+      BlanketLevel.medium => ('${_t(t[3])} tot ${_t(t[2])}', eff >= t[3] && eff < t[2]),
+      BlanketLevel.heavy => ('${_t(t[4])} tot ${_t(t[3])}', eff >= t[4] && eff < t[3]),
+      BlanketLevel.extraHeavy => ('onder ${_t(t[4])}', eff < t[4]),
+      BlanketLevel.flyRain => ('', true),
+    };
+    final clip = horse.clip.label.toLowerCase();
+    if (inRange) {
+      return '${_t(eff)} valt bij ${level.label.toLowerCase()} ($range, $clip).';
+    }
+    if (level == BlanketLevel.none && eff >= t[1]) {
+      return '${_t(eff)} valt bij regendeken (${_t(t[1])} tot ${_t(t[0])}), maar die '
+          'is ingesteld als "alleen bij nat weer" en het is droog → geen deken.';
+    }
+    if (level == BlanketLevel.rainSheet && eff >= t[0]) {
+      return 'Een geschoren paard dat onder 16°C buiten in de regen staat, '
+          'krijgt altijd iets waterdichts → regendeken.';
+    }
+    return '${_t(eff)} → ${level.label.toLowerCase()} ($clip).';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final a = advice;
+    final t = AppScope.of(context).settings.thresholdsFor(horse.clip);
+    const muted = TextStyle(fontSize: 14, color: AppColors.muted);
+    const bold = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
+    Widget row(String label, String value, {TextStyle style = muted, String? note}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: style),
+                if (note != null)
+                  Text(note, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ]),
+            ),
+            Text(value, style: style),
+          ]),
+        );
+    final flyRain = a.level == BlanketLevel.flyRain;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.line),
       ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 20, color: AppColors.green),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.35))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.thermostat, size: 20, color: AppColors.green),
+          SizedBox(width: 8),
+          Text('Zo is het advies berekend',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        ]),
+        const SizedBox(height: 8),
+        row(a.baseLabel, _t(a.baseTemp), style: bold),
+        for (final c in a.corrections)
+          row(c.label, _signed(c.delta),
+              note: c.rain && flyRain ? 'telt niet mee voor de vliegendeken met regenstuk' : null),
+        const Divider(height: 14, color: AppColors.line),
+        row('Voor ${horse.name} voelt het als', _t(a.effectiveTemp), style: bold),
+        if (flyRain && a.dryTemp != null)
+          row('Zonder regencorrectie', _t(a.dryTemp!), style: bold),
+        const SizedBox(height: 8),
+        Text(_why(t), style: const TextStyle(fontSize: 13, height: 1.35)),
       ]),
     );
   }
