@@ -294,8 +294,10 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Text(
-                      'Temperatuur zoals je paard die voelt, dus na de correcties '
-                      'voor wind, regen, zon en stal.',
+                      'De berekende temperatuur van het dagdeel: de luchttemperatuur '
+                      'na de correcties voor wind, regen, zon, stal en het paard. '
+                      'De deken wordt alleen gekozen als die binnen dit bereik valt '
+                      '(grenzen tellen mee).',
                       style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ),

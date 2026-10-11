@@ -773,7 +773,7 @@ class _ConditionsGrid extends StatelessWidget {
         tint: const Color(0xFFFFE9B8),
         label: 'Temperatuur',
         value: '${w.minTemp.round()}° / ${w.maxTemp.round()}°',
-        sub: 'gevoel tot ${w.minFeels.round()}°',
+        sub: 'gemiddeld ${w.avgTemp.round()}°',
       ),
       _Condition(
         icon: Icons.air,

@@ -230,7 +230,7 @@ Future<void> showHorseAdvice(BuildContext context, Horse horse,
             ),
           ],
           const SizedBox(height: 16),
-          _Explanation(horse: horse, advice: advice),
+          _Explanation(horse: horse, advice: advice, pick: pick),
           const SizedBox(height: 12),
           for (final n in advice.notes)
             Padding(
@@ -262,9 +262,39 @@ String _t(double v) => '${v.round()}°C';
 /// "Zo is het advies berekend": temperatuur, alle correcties en de grens
 /// waar de uitkomst in valt.
 class _Explanation extends StatelessWidget {
-  const _Explanation({required this.horse, required this.advice});
+  const _Explanation({required this.horse, required this.advice, this.pick});
   final Horse horse;
   final BlanketAdvice advice;
+  final BlanketPick? pick;
+
+  static String? _noteFor(Correction c, bool flyRain) {
+    final parts = [
+      if (c.rain && flyRain) 'telt niet mee voor de vliegendeken met regenstuk.',
+      if (c.note != null) c.note!,
+    ];
+    return parts.isEmpty ? null : parts.join(' ');
+  }
+
+  /// Waarom deze deken uit de dekenkast.
+  String? _whyBlanket() {
+    final p = pick;
+    if (p == null || advice.userChoice || !advice.level.wearsBlanket) return null;
+    final eff = _t(advice.effectiveTemp);
+    final m = p.main;
+    if (advice.level == BlanketLevel.flyRain) {
+      return 'Gekozen: ${p.label}, je vliegendeken.';
+    }
+    if (p.matches) {
+      if (m.hasOwnRange && p.under == null) {
+        return 'Gekozen: ${p.label}. $eff ligt binnen het ingestelde bereik van '
+            'deze deken (${_t(m.minTemp!)} tot ${_t(m.maxTemp!)}).';
+      }
+      return 'Gekozen: ${p.label}. Deze deken (${p.grams} g) hoort bij de klasse '
+          '${advice.level.label.toLowerCase()}, en die past bij $eff.';
+    }
+    return 'Geen van je dekens past bij $eff; dichtstbijzijnde: ${p.label} '
+        '(${p.fitNote}).';
+  }
 
   /// Waarom dit niveau: in welk bereik valt de temperatuur.
   String _why(List<double> t, double nightNone) {
@@ -290,8 +320,8 @@ class _Explanation extends StatelessWidget {
     };
     final clip = horse.clip.label.toLowerCase();
     if (a.night && level == BlanketLevel.none && eff < t[0] && eff >= nightNone) {
-      return "'s Nachts geen deken vanaf ${_t(nightNone)} ($clip), en voor "
-          '${horse.name} voelt het als ${_t(eff)} → geen deken.';
+      return "'s Nachts geen deken vanaf ${_t(nightNone)} ($clip); de berekende "
+          'temperatuur is ${_t(eff)} → geen deken.';
     }
     if (inRange) {
       return '${_t(eff)} valt bij ${level.label.toLowerCase()} ($range, $clip).';
@@ -313,6 +343,7 @@ class _Explanation extends StatelessWidget {
     final settings = AppScope.of(context).settings;
     final t = settings.thresholdsFor(horse.clip);
     const muted = TextStyle(fontSize: 14, color: AppColors.muted);
+    const info = TextStyle(fontSize: 13, color: AppColors.muted, fontStyle: FontStyle.italic);
     const bold = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
     Widget row(String label, String value, {TextStyle style = muted, String? note}) =>
         Padding(
@@ -344,16 +375,22 @@ class _Explanation extends StatelessWidget {
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 8),
-        row(a.baseLabel, _t(a.baseTemp), style: bold),
+        row('Luchttemperatuur · ${a.baseLabel.toLowerCase()}', _t(a.baseTemp), style: bold),
         for (final c in a.corrections)
-          row(c.label, _signed(c.delta),
-              note: c.rain && flyRain ? 'telt niet mee voor de vliegendeken met regenstuk' : null),
+          row(c.label, c.info ? '(${_signed(c.delta)})' : _signed(c.delta),
+              style: c.info ? info : muted,
+              note: _noteFor(c, flyRain)),
         const Divider(height: 14, color: AppColors.line),
-        row('Voor ${horse.name} voelt het als', _t(a.effectiveTemp), style: bold),
+        row('Berekende temperatuur voor ${horse.name}', _t(a.effectiveTemp), style: bold),
         if (flyRain && a.dryTemp != null)
           row('Zonder regencorrectie', _t(a.dryTemp!), style: bold),
         const SizedBox(height: 8),
         Text(_why(t, settings.nightNoneFor(horse.clip)), style: const TextStyle(fontSize: 13, height: 1.35)),
+        if (_whyBlanket() != null) ...[
+          const SizedBox(height: 6),
+          Text(_whyBlanket()!,
+              style: const TextStyle(fontSize: 13, height: 1.35, fontWeight: FontWeight.w600)),
+        ],
       ]),
     );
   }
@@ -415,7 +452,7 @@ class _ClosetCard extends StatelessWidget {
                 ? p.main.hasOwnRange && p.under == null
                     ? 'Past binnen het eigen bereik van deze deken '
                         '(${p.main.minTemp!.round()} tot ${p.main.maxTemp!.round()}°C, '
-                        'je paard voelt ${advice.effectiveTemp.round()}°C).'
+                        'berekende temperatuur ${advice.effectiveTemp.round()}°C).'
                     : 'Past binnen het advies (${level.grams}).'
                 : 'Geen van je dekens past precies; dit is de dichtstbijzijnde: '
                     '${p.fitNote}. Het advies is ${level.label.toLowerCase()} (${level.grams}).',

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/advice_settings.dart';
@@ -23,9 +25,16 @@ enum BlanketLevel {
 
 /// Eén correctie op de temperatuur, bijv. ('Wind 25 km/u', −2).
 class Correction {
-  const Correction(this.label, this.delta, {this.rain = false});
+  const Correction(this.label, this.delta,
+      {this.rain = false, this.info = false, this.note});
   final String label;
   final double delta;
+
+  /// Alleen ter informatie (een factor); telt niet apart op.
+  final bool info;
+
+  /// Extra uitleg onder de regel.
+  final String? note;
 
   /// Is dit de correctie voor regen of sneeuw?
   final bool rain;
@@ -179,6 +188,12 @@ class BlanketAdvisor {
   /// … en 'volle zon'.
   static const fullSunFrom = 0.75;
 
+  /// Grootste weercorrectie (°C), omhoog en omlaag.
+  static const maxWeatherCorrection = 4.0;
+
+  /// Telt dit uur als nat (echte neerslag)?
+  static bool isWetHour(HourWeather h) => h.precip >= 0.2;
+
   /// Vanaf deze maximumtemperatuur telt zonnig weer als 'warm'.
   static const sunnyWarmFrom = 15.0;
 
@@ -194,62 +209,120 @@ class BlanketAdvisor {
     final stabled = inside;
     final shelter = !inside && horse.housing == Housing.shelter;
 
-    final base = w.isNight ? w.minTemp : (w.minTemp + w.avgTemp) / 2;
+    // Basis: de gewone luchttemperatuur (temperature_2m) van het dagdeel,
+    // 's nachts het koudste uur, overdag het gemiddelde. De gevoels-
+    // temperatuur van de weerdienst gebruiken we niet: daar zit wind al in.
+    final base = w.isNight ? w.minTemp : w.avgTemp;
     var eff = base;
 
-    // --- Weer ---------------------------------------------------------
-    var wetPenalty = 0.0;
-    var windPenalty = 0.0;
-    if (!stabled) {
-      if (w.maxWind >= 35) {
-        windPenalty = settings.windStrong;
-      } else if (w.maxWind >= 20) {
-        windPenalty = settings.windModerate;
-      }
-      if (w.isWet) wetPenalty = settings.wet;
-      if (shelter) {
-        windPenalty /= 2;
-        wetPenalty /= 2;
-      }
-    }
-    if (windPenalty > 0) {
-      eff -= windPenalty;
-      reasons.add('Wind ${w.maxWind.round()} km/u');
-      corr.add(Correction('Wind ${w.maxWind.round()} km/u${shelter ? ' (schuilstal, half)' : ''}',
-          -windPenalty));
-    }
-    if (wetPenalty > 0) {
-      eff -= wetPenalty;
-      reasons.add(w.kind == WeatherKind.snow ? 'Sneeuw' : 'Nat weer');
-      corr.add(Correction(
-          '${w.kind == WeatherKind.snow ? 'Sneeuw' : 'Regen'}${shelter ? ' (schuilstal, half)' : ''}',
-          -wetPenalty,
-          rain: true));
-    }
-    // Zon: alleen overdag en buiten.
+    // --- Weer (per uur) ------------------------------------------------
+    // Per uur: van de verkoelende factoren (wind, regen) telt alleen de
+    // grootste; regenen én waaien geeft hooguit 1 °C extra. Zon compenseert,
+    // maar niet in een uur met regen. Per uur begrensd op −4 tot +4 °C.
+    final hs = w.hours;
+    var weatherCorr = 0.0;
+    var weatherCorrDry = 0.0;
     var sunBonus = 0.0;
-    final sun = w.sunFraction;
-    if (!stabled && !w.isNight && sun != null) {
-      if (sun >= fullSunFrom) {
-        sunBonus = settings.fullSun;
-        if (sunBonus > 0) {
-          reasons.add('Volle zon +${sunBonus.round()}°');
-          corr.add(Correction('Volle zon', sunBonus));
-        }
-      } else if (sun >= sunnyFrom) {
-        sunBonus = settings.sunny;
-        if (sunBonus > 0) {
-          reasons.add('Zonnig +${sunBonus.round()}°');
-          corr.add(Correction('Zonnig', sunBonus));
-        }
+    if (!stabled && hs.isNotEmpty) {
+      double windOf(HourWeather h) {
+        final v = h.wind >= 35
+            ? settings.windStrong
+            : h.wind >= 20
+                ? settings.windModerate
+                : 0.0;
+        return shelter ? v / 2 : v;
       }
-      eff += sunBonus;
+
+      double wetOf(HourWeather h) =>
+          isWetHour(h) ? (shelter ? settings.wet / 2 : settings.wet) : 0.0;
+
+      double sunOf(HourWeather h) {
+        if (w.isNight || isWetHour(h) || h.isDay == false) return 0;
+        final f = h.sun;
+        if (f == null) return 0;
+        if (f >= fullSunFrom) return settings.fullSun;
+        if (f >= sunnyFrom) return settings.sunny;
+        return 0;
+      }
+
+      double hourCorr(HourWeather h, {required bool withRain}) {
+        final wind = windOf(h);
+        final wet = withRain ? wetOf(h) : 0.0;
+        var cool = math.max(wind, wet);
+        if (wind > 0 && wet > 0) cool += math.min(1.0, math.min(wind, wet));
+        return (-cool + sunOf(h)).clamp(-maxWeatherCorrection, maxWeatherCorrection);
+      }
+
+      double combine(double Function(HourWeather) f) {
+        if (w.isNight) {
+          // 's nachts telt het koudste uur na correctie
+          var lo = double.infinity;
+          for (final h in hs) {
+            lo = math.min(lo, h.temp + f(h));
+          }
+          return lo - base;
+        }
+        var sum = 0.0;
+        for (final h in hs) {
+          sum += f(h);
+        }
+        return sum / hs.length;
+      }
+
+      weatherCorr = combine((h) => hourCorr(h, withRain: true));
+      weatherCorrDry = combine((h) => hourCorr(h, withRain: false));
+      if (!w.isNight) {
+        sunBonus = hs.fold<double>(0, (t, h) => t + sunOf(h)) / hs.length;
+      }
+
+      // Voor de uitleg: welke factoren speelden in hoeveel uur.
+      final n = hs.length;
+      final windy = hs.where((h) => windOf(h) > 0).toList();
+      final wetHs = hs.where((h) => wetOf(h) > 0).length;
+      final full = hs.where((h) => sunOf(h) > 0 && sunOf(h) == settings.fullSun).length;
+      final sunny = hs.where((h) => sunOf(h) > 0 && sunOf(h) != settings.fullSun).length;
+      final half = shelter ? ' (schuilstal: half)' : '';
+      if (windy.isNotEmpty) {
+        final maxW = windy.map((h) => h.wind).reduce(math.max);
+        final strong = maxW >= 35;
+        reasons.add('Wind ${maxW.round()} km/u');
+        corr.add(Correction(
+            '${strong ? 'Harde wind' : 'Wind'} (vanaf ${strong ? 35 : 20} km/u, max '
+            '${maxW.round()} km/u) in ${windy.length} van $n uur$half',
+            -(strong ? settings.windStrong : settings.windModerate) / (shelter ? 2 : 1),
+            info: true));
+      }
+      if (wetHs > 0) {
+        final snow = w.kind == WeatherKind.snow;
+        reasons.add(snow ? 'Sneeuw' : 'Nat weer');
+        corr.add(Correction('${snow ? 'Sneeuw' : 'Regen'} in $wetHs van $n uur$half',
+            -settings.wet / (shelter ? 2 : 1),
+            info: true, rain: true));
+      }
+      if (full > 0) {
+        reasons.add('Volle zon +${settings.fullSun.round()}°');
+        corr.add(Correction('Volle zon in $full van $n uur', settings.fullSun, info: true));
+      }
+      if (sunny > 0) {
+        reasons.add('Zonnig +${settings.sunny.round()}°');
+        corr.add(Correction('Zonnig in $sunny van $n uur', settings.sunny, info: true));
+      }
+      if (windy.isNotEmpty || wetHs > 0 || full > 0 || sunny > 0) {
+        corr.add(Correction(
+            w.isNight ? 'Weer samen (bij het koudste uur)' : 'Weer samen (gemiddeld over het dagdeel)',
+            weatherCorr,
+            note: 'Alleen de grootste koude-factor telt; bij regen én wind '
+                'hooguit 1° extra; zon niet bij regen; per uur tussen −4° en +4°.'));
+      }
+      eff += weatherCorr;
     }
+    // Hoeveel de regen meetelde (voor de vliegendeken met regenstuk).
+    final wetPenalty = weatherCorrDry - weatherCorr;
     if (stabled) {
       eff += settings.stable;
       reasons.add('Op stal');
       corr.add(Correction('Op stal', settings.stable));
-    } else if (shelter && (windPenalty > 0 || wetPenalty > 0)) {
+    } else if (shelter && weatherCorr < 0) {
       reasons.add('Schuilstal');
     }
 

@@ -35,7 +35,11 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
     var dry = _exampleTemp;
     if (!_exampleNight && _exampleSun == 1) dry += s.sunny;
     if (!_exampleNight && _exampleSun == 2) dry += s.fullSun;
-    final eff = _exampleWet ? dry - s.wet : dry;
+    // Zon telt niet bij regen; correctie begrensd op ±4°.
+    double lim(double c) => c.clamp(-BlanketAdvisor.maxWeatherCorrection,
+        BlanketAdvisor.maxWeatherCorrection);
+    dry = _exampleTemp + lim(dry - _exampleTemp);
+    final eff = _exampleWet ? _exampleTemp + lim(-s.wet) : dry;
     return advisor.levelForWeather(clip, eff,
         wet: _exampleWet, base: _exampleTemp, dryEff: dry, night: _exampleNight);
   }
@@ -256,7 +260,7 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
           const Text('Correcties voor het weer',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          const Text('Hoeveel graden het kouder (of warmer) voelt.',
+          const Text('Hoeveel graden er per factor af (of bij) gaat.',
               style: TextStyle(color: AppColors.muted)),
           const SizedBox(height: 10),
           _Card(
@@ -324,8 +328,10 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Alle correcties worden bij elkaar opgeteld (bijv. volle zon +4° en '
-            'wind −2° geeft +2°). Zon telt alleen overdag en niet op stal. '
+            'Correcties worden per uur bepaald en niet zomaar opgeteld: van wind '
+            'en regen telt alleen de grootste, regen én wind samen geeft hooguit '
+            '1° extra. Zon compenseert (niet in een uur met regen), alleen '
+            'overdag en niet op stal. Het weer telt in totaal hooguit −4° of +4°. '
             'Met een schuilstal tellen wind en regen half mee. Wil je één paard '
             'warmer of kouder inschatten, zet dat paard dan op "heeft het snel '
             'koud" of "heeft het snel warm".',

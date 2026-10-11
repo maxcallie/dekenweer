@@ -281,7 +281,11 @@ class PeriodWeather {
     required this.avgHumidity,
     required this.code,
     this.sunFraction,
+    this.hours = const [],
   });
+
+  /// De losse uren van deze periode.
+  final List<HourWeather> hours;
 
   final String label;
   final DateTime start;
@@ -371,6 +375,7 @@ class PeriodWeather {
       avgHumidity: (sumH / hs.length).round(),
       code: codeFor[chosen]!,
       sunFraction: sunHours == 0 ? null : sunSum / sunHours,
+      hours: List.unmodifiable(hs),
     );
   }
 }

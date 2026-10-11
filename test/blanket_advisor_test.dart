@@ -179,13 +179,13 @@ void main() {
       // deels geschoren: 15 tot 20 °C
       final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
       final adv = advisor.advise(h, period(temp: 18, night: false, precip: 3, wind: 25));
-      // 18 − 2 (wind) − 3 (regen) = 13, zonder regen 16
-      expect(adv.effectiveTemp, 13);
+      // 18 − 3 (regen, grootste) − 1 (wind erbij) = 14, zonder regen 16
+      expect(adv.effectiveTemp, 14);
       expect(adv.dryTemp, 16);
       expect(adv.level, BlanketLevel.flyRain);
       expect(adv.flyRainRange, (15.0, 20.0));
-      expect(adv.corrections.map((c) => c.delta), containsAll([-2.0, -3.0]));
       expect(adv.corrections.firstWhere((c) => c.rain).delta, -3);
+      expect(adv.corrections.firstWhere((c) => !c.info).delta, -4);
     });
 
     test('17 °C met regen: vliegendeken, ook al zakt het met regen onder 15', () {
@@ -318,6 +318,114 @@ void main() {
           BlanketLevel.light);
       expect(t.nightNoneFor(ClipType.full), 10);
       expect(AdviceSettings.fromJson(t.toJson()).nightNoneFor(ClipType.none), 13);
+    });
+  });
+
+  group('weercorrecties niet optellen', () {
+    final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial); // geen deken vanaf 15
+
+    test('17 °C, droog, wind 25 km/u → 15 °C → geen deken', () {
+      final a = advisor.advise(h, period(temp: 17, night: false, wind: 25));
+      expect(a.baseTemp, 17);
+      expect(a.effectiveTemp, 15);
+      expect(a.level, BlanketLevel.none);
+    });
+
+    test('14 °C, regen, wind 25 km/u → 14 − 3 − 1 = 10 °C → regendeken', () {
+      final a = advisor.advise(h, period(temp: 14, night: false, wind: 25, precip: 6));
+      expect(a.effectiveTemp, 10);
+      expect(a.level, BlanketLevel.rainSheet);
+    });
+
+    test('12 °C, droog, windstil, volle zon → 16 °C → geen deken', () {
+      final a = advisor.advise(h, period(temp: 12, night: false, sun: 1));
+      expect(a.effectiveTemp, 16);
+      expect(a.level, BlanketLevel.none);
+    });
+
+    test('harde wind en regen: grootste + 1, zon telt niet bij regen', () {
+      final a = advisor.advise(h, period(temp: 14, night: false, wind: 40, precip: 6, sun: 1));
+      expect(a.effectiveTemp, 14 - 4); // max(4, 3) + 1 = 5, begrensd op −4
+    });
+
+    test('correctie alleen in uren waarin de factor speelt', () {
+      final start = DateTime(2026, 10, 13, 12);
+      final hours = [
+        for (var i = 0; i < 6; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            temp: 17, feels: 13, precipProb: 0, precip: 0, code: 2,
+            wind: i < 3 ? 25 : 5, // de helft van de uren waait het
+            humidity: 80,
+          ),
+      ];
+      final w = PeriodWeather.fromHours(hours,
+          start: start, end: start.add(const Duration(hours: 6)),
+          isNight: false, label: 'Middag');
+      final a = advisor.advise(h, w);
+      expect(a.effectiveTemp, 16); // gemiddeld −1, niet −2
+    });
+
+    test('gevoelstemperatuur van de weerdienst wordt niet gebruikt', () {
+      // 'feels' staat in period() gelijk aan temp; hier lager: geen effect.
+      final start = DateTime(2026, 10, 13, 12);
+      final hours = [
+        for (var i = 0; i < 6; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            temp: 17, feels: 11, precipProb: 0, precip: 0, code: 2, wind: 5,
+            humidity: 80,
+          ),
+      ];
+      final w = PeriodWeather.fromHours(hours,
+          start: start, end: start.add(const Duration(hours: 6)),
+          isNight: false, label: 'Middag');
+      expect(advisor.advise(h, w).effectiveTemp, 17);
+    });
+  });
+
+  group('eigen bereik van dekens', () {
+    final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial); // regendeken 10–15
+    final a = Blanket(id: 'A', name: 'Deken A', kind: BlanketKind.rain, grams: 0);
+    final b = Blanket(
+        id: 'B', name: 'Deken B', kind: BlanketKind.rain, grams: 0, minTemp: 5, maxTemp: 10);
+
+    BlanketPick? pickAt(double temp, {bool night = false, List<Blanket>? all}) {
+      final adv = advisor.advise(h, period(temp: temp, night: night));
+      return BlanketPicker.pick(h, adv, all ?? [a, b]);
+    }
+
+    test('13 °C → deken A', () => expect(pickAt(13)!.main.id, 'A'));
+    test('7 °C → deken B', () => expect(pickAt(7)!.main.id, 'B'));
+    test('7 °C nacht → deken B', () => expect(pickAt(7, night: true)!.main.id, 'B'));
+    test('grenzen tellen mee: 10 °C → B mag, 5 °C → B mag', () {
+      expect(pickAt(5)!.main.id, 'B');
+      // 10 °C is regendeken-klasse: A past, B past ook (max 10); score kiest
+      final p = pickAt(10)!;
+      expect(p.matches, isTrue);
+    });
+
+    test('17 °C → nooit deken B', () {
+      expect(pickAt(17)?.main.id, isNot('B'));
+      expect(pickAt(17, all: [b]), isNull); // geen deken nodig
+      for (final t in [11.0, 12.0, 13.0, 14.0]) {
+        expect(pickAt(t)!.main.id, 'A');
+      }
+    });
+
+    test('alleen B en te warm: dichtstbijzijnde met melding', () {
+      final p = pickAt(13, all: [b])!;
+      expect(p.main.id, 'B');
+      expect(p.matches, isFalse);
+      expect(p.fitNote, 'buiten ingesteld bereik (max 10 °C)');
+    });
+
+    test('na opnieuw laden werkt het bereik nog', () {
+      final b2 = Blanket.fromJson(b.toJson());
+      expect(b2.minTemp, 5);
+      expect(b2.maxTemp, 10);
+      expect(pickAt(13, all: [a, b2])!.main.id, 'A');
+      expect(pickAt(7, all: [a, b2])!.main.id, 'B');
     });
   });
 

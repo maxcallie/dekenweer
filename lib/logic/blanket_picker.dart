@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/blanket.dart';
@@ -13,7 +15,12 @@ class BlanketPick {
     required this.level,
     this.fit = 0,
     this.warning,
+    this.rangeNote,
   });
+
+  /// Bij een deken met eigen bereik die niet past, bijv.
+  /// 'buiten ingesteld bereik (max 10 °C)'.
+  final String? rangeNote;
 
   final Blanket main;
   final Blanket? under;
@@ -38,7 +45,7 @@ class BlanketPick {
   int get offset => fit;
 
   /// Korte melding als de deken niet precies past.
-  String? get fitNote => switch (fit) {
+  String? get fitNote => rangeNote ?? switch (fit) {
         < 0 => under == null
             ? 'iets te licht, overweeg een fleece of onderdeken eronder'
             : 'iets te licht',
@@ -107,24 +114,25 @@ class BlanketPicker {
       }
     }
     final unders = mine.where((b) => b.kind == BlanketKind.under).toList();
+    final eff = advice.effectiveTemp;
 
-    // (fit, afstand) voor een combinatie.
+    // (fit, afstand): een deken met eigen bereik past alleen als de
+    // temperatuur van het dagdeel binnen dat bereik ligt (grenzen tellen
+    // mee); een deken zonder eigen bereik past als zijn warmteklasse gelijk
+    // is aan het advies.
     (int, double) measure(Blanket m, Blanket? u) {
       if (m.hasOwnRange) {
         final extra = (u?.grams ?? 0) / gramsPerDegree;
         final lo = m.minTemp! - extra, hi = m.maxTemp! - extra;
-        final eff = advice.effectiveTemp;
         if (eff < lo) return (-1, (lo - eff) * gramsPerDegree);
         if (eff > hi) return (1, (eff - hi) * gramsPerDegree);
         return (0, 0);
       }
       final g = m.grams + (u?.grams ?? 0);
       final d = distance(advice.level, g).toDouble();
-      if (d <= 50) return (0, d);
-      final heavier = advice.level == BlanketLevel.extraHeavy
-          ? g >= 350
-          : g > targetGrams(advice.level);
-      return (heavier ? 1 : -1, d);
+      final cls = levelForGrams(g);
+      if (cls == advice.level) return (0, d);
+      return (cls.index > advice.level.index ? 1 : -1, math.max(d, 1));
     }
 
     final options = <(Blanket, Blanket?)>[
@@ -147,13 +155,21 @@ class BlanketPicker {
       return s;
     }
 
-    options.sort((a, b) => score(a).compareTo(score(b)));
-    final (m, u) = options.first;
+    // Eerst alleen dekens die passen; past er geen, dan de dichtstbijzijnde.
+    final fitting = options.where((o) => measure(o.$1, o.$2).$1 == 0).toList();
+    final pool = fitting.isNotEmpty ? fitting : options;
+    pool.sort((a, b) => score(a).compareTo(score(b)));
+    final (m, u) = pool.first;
+    final fit = measure(m, u).$1;
     return BlanketPick(
       main: m,
       under: u,
       level: advice.level,
-      fit: measure(m, u).$1,
+      fit: fit,
+      rangeNote: m.hasOwnRange && fit != 0
+          ? 'buiten ingesteld bereik '
+              '(${fit > 0 ? 'max ${m.maxTemp!.round()}' : 'min ${m.minTemp!.round()}'} °C)'
+          : null,
       warning: notWaterproof
           ? advice.wet
               ? 'Let op: het regent en je hebt geen waterdichte deken. '
