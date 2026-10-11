@@ -126,6 +126,8 @@ const blanketColors = <Color>[
   Color(0xFF2B7A8C), // petrol
   Color(0xFFB5652B), // cognac
   Color(0xFFD6A21E), // oker
+  Color(0xFF6B4A32), // bruin
+  Color(0xFFF2EEE6), // wit
 ];
 
 class Horse {

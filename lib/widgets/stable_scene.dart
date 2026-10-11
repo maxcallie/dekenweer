@@ -524,7 +524,10 @@ class _StablePainter extends CustomPainter {
   void _drapedBlanket(Canvas canvas, Offset top, double width, Color color, String label) {
     final hsl = HSLColor.fromColor(color);
     final dark = hsl.withLightness((hsl.lightness - 0.12).clamp(0.0, 1.0)).toColor();
-    final light = hsl.withLightness((hsl.lightness + 0.18).clamp(0.0, 1.0)).toColor();
+    // bij een witte deken zijn naden en rand donkerder, anders lichter
+    final light = hsl
+        .withLightness((hsl.lightness + (hsl.lightness > 0.8 ? -0.22 : 0.18)).clamp(0.0, 1.0))
+        .toColor();
     final x = top.dx, y = top.dy, wd = width / 2;
     canvas.drawRRect(
         RRect.fromRectAndRadius(Rect.fromLTRB(x - wd, y - 5, x + wd, y + 5), const Radius.circular(5)),

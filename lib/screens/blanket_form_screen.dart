@@ -227,7 +227,7 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
                       color: c,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: b.colorValue == c.toARGB32() ? AppColors.ink : Colors.white,
+                        color: b.colorValue == c.toARGB32() ? AppColors.ink : AppColors.line,
                         width: 3,
                       ),
                     ),

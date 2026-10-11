@@ -234,7 +234,7 @@ class _HorseFormScreenState extends State<HorseFormScreen> {
                       border: Border.all(
                         color: h.blanketColorValue == c.toARGB32()
                             ? AppColors.ink
-                            : Colors.white,
+                            : AppColors.line,
                         width: 3,
                       ),
                     ),

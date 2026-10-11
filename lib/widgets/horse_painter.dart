@@ -373,7 +373,9 @@ void paintHorse(Canvas canvas, HorseLook look, HorsePose pose) {
   if (look.level.wearsBlanket && blanket != null) {
     final isSheet = look.level == BlanketLevel.rainSheet;
     final bColor = isSheet ? _shade(blanket, 0.12) : blanket;
-    final trim = _shade(bColor, 0.22);
+    // sierrand: bij een lichte (witte) deken donkerder, anders lichter
+    final light = HSLColor.fromColor(bColor).lightness > 0.8;
+    final trim = _shade(bColor, light ? -0.22 : 0.22);
     // dikkere dekens hangen iets lager
     final bottom = -40.0 + look.level.index * 0.6;
 
