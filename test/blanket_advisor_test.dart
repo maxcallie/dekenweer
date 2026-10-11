@@ -306,8 +306,16 @@ void main() {
 
     test('instelbaar per scheerstatus', () {
       final t = s.withNightNone(ClipType.none, 13);
-      expect(BlanketAdvisor(t).advise(h, period(temp: 12, night: true)).level,
-          isNot(BlanketLevel.none));
+      // 12 °C ligt nu onder de nachtgrens: normale grenzen (regendeken, die
+      // standaard alleen bij nat weer telt → droog geen deken; schakelaar uit
+      // → regendeken).
+      expect(
+          BlanketAdvisor(t.withRainOnlyWet(ClipType.none, false))
+              .advise(h, period(temp: 12, night: true))
+              .level,
+          BlanketLevel.rainSheet);
+      expect(BlanketAdvisor(t).advise(h, period(temp: 9, night: true)).level,
+          BlanketLevel.light);
       expect(t.nightNoneFor(ClipType.full), 10);
       expect(AdviceSettings.fromJson(t.toJson()).nightNoneFor(ClipType.none), 13);
     });
