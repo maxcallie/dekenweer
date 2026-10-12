@@ -59,7 +59,7 @@ class BlanketAdvice {
     this.night = false,
     this.baseLabel = 'Temperatuur',
     this.dryTemp,
-    this.flyRainRange,
+    this.why = '',
     this.wholeDay = false,
   });
 
@@ -86,7 +86,7 @@ class BlanketAdvice {
         night: night,
         baseLabel: baseLabel,
         dryTemp: dryTemp,
-        flyRainRange: flyRainRange,
+        why: why,
         wholeDay: wholeDay ?? this.wholeDay,
       );
 
@@ -102,8 +102,8 @@ class BlanketAdvice {
   /// Gevoelstemperatuur zonder de regencorrectie.
   final double? dryTemp;
 
-  /// Bij de vliegendeken met regenstuk: het bereik (van, tot) dat gold.
-  final (double, double)? flyRainRange;
+  /// Waarom dit niveau (welke grens gold).
+  final String why;
 
   /// Staat het paard buiten in de regen of sneeuw?
   final bool wet;
@@ -153,6 +153,7 @@ class BlanketAdvice {
         night: night,
         baseLabel: baseLabel,
         dryTemp: dryTemp,
+        why: why,
         advisedLevel: this.level,
         choiceBlanketId: blanketId,
       );
@@ -409,7 +410,7 @@ class BlanketAdvisor {
     // Zonder de regencorrectie: het regenstuk van een vliegendeken houdt de
     // regen juist tegen.
     final dryEff = eff + wetPenalty;
-    final level = levelForWeather(horse.clip, eff,
+    final (level, why) = decide(horse.clip, eff,
         wet: outsideWet, base: base, dryEff: dryEff, night: w.isNight);
 
     final neck = !stabled &&
@@ -474,52 +475,131 @@ class BlanketAdvisor {
       night: w.isNight,
       baseLabel: w.isNight ? 'koudste uur' : 'gemiddeld over het dagdeel',
       dryTemp: dryEff,
-      flyRainRange: level == BlanketLevel.flyRain
-          ? (settings.thresholdsFor(horse.clip)[0], settings.flyRainUpToFor(horse.clip))
-          : null,
+      why: why,
     );
   }
 
-  /// Het advies voor deze effectieve temperatuur, rekening houdend met het
-  /// weer: een regendeken die alleen bij nat weer hoort, en de vliegendeken
-  /// met regenstuk bij warm, nat weer. [wet]: staat het paard buiten in de
-  /// regen of sneeuw?
-  ///
-  /// [base] is de temperatuur zonder correcties: een geschoren paard in de
-  /// regen krijgt onder 16 °C altijd iets waterdichts.
-  ///
-  /// [dryEff] is dezelfde temperatuur maar zonder de regencorrectie; die
-  /// bepaalt of de vliegendeken met regenstuk van toepassing is (het
-  /// regenstuk beschermt tegen de regen). Zonder [dryEff] telt [eff].
-  ///
-  /// [night]: advies voor de nacht. Dan is het 'geen deken' vanaf de
-  /// ingestelde nachtgrens; daaronder gelden de normale grenzen.
+  /// Het advies voor deze temperatuur. Zie [decide].
   BlanketLevel levelForWeather(ClipType clip, double eff,
+          {required bool wet, double? base, double? dryEff, bool night = false}) =>
+      decide(clip, eff, wet: wet, base: base, dryEff: dryEff, night: night).$1;
+
+  /// Bepaalt het niveau én de uitleg waarom.
+  ///
+  /// [eff] is de berekende temperatuur mét regencorrectie, [dryEff] dezelfde
+  /// zonder regencorrectie (wind en zon tellen wel). De lagen die zelf tegen
+  /// regen beschermen (vliegendeken met regenstuk, regendeken) en 'geen
+  /// deken' kiezen we op [dryEff]; voor de lichte deken en zwaarder telt de
+  /// regencorrectie wel mee.
+  ///
+  /// [base]: luchttemperatuur zonder correcties (een geschoren paard in de
+  /// regen krijgt onder 16 °C altijd iets waterdichts).
+  /// [night]: eerst de nachtgrenzen ('geen deken' en 'vliegendeken' 's
+  /// nachts), daaronder de normale grenzen.
+  (BlanketLevel, String) decide(ClipType clip, double eff,
       {required bool wet, double? base, double? dryEff, bool night = false}) {
-    // Warm en nat: vliegendeken met regenstuk, tussen 'Geen deken' en de
-    // ingestelde bovengrens (temperatuur zonder regencorrectie).
     final dry = dryEff ?? eff;
-    if (wet &&
-        settings.flyRain &&
-        dry >= settings.thresholdsFor(clip)[0] &&
-        dry < settings.flyRainUpToFor(clip)) {
-      return BlanketLevel.flyRain;
+    final noRain = wet ? ' (zonder regencorrectie: de deken houdt de regen tegen)' : '';
+    if (night) {
+      final nn = settings.nightNoneFor(clip);
+      final nf = settings.nightFlyFor(clip);
+      if (dry >= nn) {
+        return (
+          BlanketLevel.none,
+          "'s Nachts geen deken vanaf ${fmtTemp(nn)}; het is ${fmtTemp(dry)}$noRain."
+        );
+      }
+      if (dry >= nf) {
+        if (settings.flyRain && (wet || !settings.flyOnlyWetFor(clip))) {
+          return (
+            BlanketLevel.flyRain,
+            "'s Nachts vliegendeken met regenstuk van ${fmtTemp(nf)} tot ${fmtTemp(nn)}; "
+                'het is ${fmtTemp(dry)}$noRain.'
+          );
+        }
+        return (
+          BlanketLevel.none,
+          settings.flyRain
+              ? "'s Nachts valt ${fmtTemp(dry)} bij de vliegendeken met regenstuk "
+                  '(${fmtTemp(nf)} tot ${fmtTemp(nn)}), maar die is ingesteld als '
+                  '"alleen bij regen" en het is droog → geen deken.'
+              : "'s Nachts ${fmtTemp(dry)}: tussen ${fmtTemp(nf)} en ${fmtTemp(nn)}, en de "
+                  'vliegendeken met regenstuk staat uit → geen deken.'
+        );
+      }
+      final (l, why) = _decideDay(clip, eff, dry, wet: wet, base: base);
+      return (l, "Onder ${fmtTemp(nf)} gelden 's nachts de normale grenzen. $why");
     }
-    if (night && eff >= settings.nightNoneFor(clip)) return BlanketLevel.none;
-    final level = levelFor(clip, eff);
-    // Regendeken alleen bij nat weer (instelbaar per scheerstatus).
-    if (level == BlanketLevel.rainSheet && !wet && settings.rainOnlyWetFor(clip)) {
-      return BlanketLevel.none;
+    return _decideDay(clip, eff, dry, wet: wet, base: base);
+  }
+
+  (BlanketLevel, String) _decideDay(ClipType clip, double eff, double dry,
+      {required bool wet, double? base}) {
+    final t = settings.thresholdsFor(clip);
+    final flyFrom = settings.flyFromFor(clip);
+    final noRain = wet ? ' (zonder regencorrectie: de deken houdt de regen tegen)' : '';
+    if (dry >= t[0]) {
+      return (BlanketLevel.none, 'Vanaf ${fmtTemp(t[0])} geen deken; het is ${fmtTemp(dry)}$noRain.');
     }
-    // Een geschoren paard dat buiten in de regen staat: altijd iets waterdichts.
-    if (level == BlanketLevel.none &&
-        wet &&
-        clip != ClipType.none &&
-        base != null &&
-        base < 16) {
-      return BlanketLevel.rainSheet;
+    if (dry >= flyFrom) {
+      if (settings.flyRain && (wet || !settings.flyOnlyWetFor(clip))) {
+        return (
+          BlanketLevel.flyRain,
+          '${fmtTemp(dry)} ligt tussen ${fmtTemp(flyFrom)} en ${fmtTemp(t[0])} '
+              '→ vliegendeken met regenstuk$noRain.'
+        );
+      }
+      if (wet && clip != ClipType.none && base != null && base < 16) {
+        return (
+          BlanketLevel.rainSheet,
+          'Een geschoren paard dat onder 16 °C buiten in de regen staat, krijgt '
+              'altijd iets waterdichts → regendeken.'
+        );
+      }
+      return (
+        BlanketLevel.none,
+        settings.flyRain
+            ? '${fmtTemp(dry)} valt bij de vliegendeken met regenstuk (${fmtTemp(flyFrom)} '
+                'tot ${fmtTemp(t[0])}), maar die is ingesteld als "alleen bij regen" en '
+                'het is droog → geen deken.'
+            : '${fmtTemp(dry)} ligt boven de regendeken (tot ${fmtTemp(flyFrom)}) en de '
+                'vliegendeken met regenstuk staat uit → geen deken.'
+      );
     }
-    return level;
+    if (dry >= t[1]) {
+      if (!wet && settings.rainOnlyWetFor(clip)) {
+        return (
+          BlanketLevel.none,
+          '${fmtTemp(dry)} valt bij de regendeken (${fmtTemp(t[1])} tot ${fmtTemp(flyFrom)}), '
+              'maar die is ingesteld als "alleen bij nat weer" en het is droog → geen deken.'
+        );
+      }
+      return (
+        BlanketLevel.rainSheet,
+        '${fmtTemp(dry)} ligt tussen ${fmtTemp(t[1])} en ${fmtTemp(flyFrom)} → regendeken$noRain.'
+      );
+    }
+    // Lichte deken en zwaarder: hier telt de regencorrectie wel mee.
+    final (BlanketLevel l, String range) = eff >= t[2]
+        ? (BlanketLevel.light, '${fmtTemp(t[2])} tot ${fmtTemp(t[1])}')
+        : eff >= t[3]
+            ? (BlanketLevel.medium, '${fmtTemp(t[3])} tot ${fmtTemp(t[2])}')
+            : eff >= t[4]
+                ? (BlanketLevel.heavy, '${fmtTemp(t[4])} tot ${fmtTemp(t[3])}')
+                : (BlanketLevel.extraHeavy, 'onder ${fmtTemp(t[4])}');
+    return (
+      l,
+      '${fmtTemp(eff)}${wet ? ' (met regencorrectie)' : ''} valt bij '
+          '${l.label.toLowerCase()} ($range).'
+    );
+  }
+
+  /// '12 °C' of '12,5 °C'.
+  static String fmtTemp(double v) {
+    final r = (v * 2).round() / 2;
+    return r == r.roundToDouble()
+        ? '${r.round()} °C'
+        : '${r.toStringAsFixed(1).replaceAll('.', ',')} °C';
   }
 
   /// Bovengrens van een warmteklasse: vanaf deze temperatuur hoort er een
@@ -528,8 +608,8 @@ class BlanketAdvisor {
     final t = settings.thresholdsFor(clip);
     return switch (level) {
       BlanketLevel.none => null,
-      BlanketLevel.flyRain => settings.flyRainUpToFor(clip),
-      BlanketLevel.rainSheet => t[0],
+      BlanketLevel.flyRain => t[0],
+      BlanketLevel.rainSheet => settings.flyRain ? settings.flyFromFor(clip) : t[0],
       BlanketLevel.light => t[1],
       BlanketLevel.medium => t[2],
       BlanketLevel.heavy => t[3],
@@ -572,7 +652,8 @@ class BlanketAdvisor {
     }
     // De nachtdeken is zwaarder: past die overdag nog?
     final upper = nightMax ?? classUpper(clip, night.level);
-    final dayTemp = night.level == BlanketLevel.flyRain
+    // Waterdichte lagen kiezen we op de temperatuur zonder regencorrectie.
+    final dayTemp = night.level == BlanketLevel.flyRain || night.level == BlanketLevel.rainSheet
         ? (day.dryTemp ?? day.effectiveTemp)
         : day.effectiveTemp;
     final tooWarm = upper != null &&
@@ -606,6 +687,7 @@ class BlanketAdvisor {
     // Lager dan de laatste grens = extraHeavy.
     final t = settings.thresholdsFor(clip);
     if (eff >= t[0]) return BlanketLevel.none;
+    if (settings.flyRain && eff >= settings.flyFromFor(clip)) return BlanketLevel.flyRain;
     if (eff >= t[1]) return BlanketLevel.rainSheet;
     if (eff >= t[2]) return BlanketLevel.light;
     if (eff >= t[3]) return BlanketLevel.medium;

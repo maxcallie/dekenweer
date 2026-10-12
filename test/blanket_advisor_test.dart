@@ -41,21 +41,55 @@ PeriodWeather period({
 void main() {
   const advisor = BlanketAdvisor();
 
-  test('ongeschoren warmbloed bij 10°C droog: geen deken', () {
+  // ---- Doel: niet geschoren (standaardinstellingen) ----------------------
+  group('niet geschoren, overdag', () {
     final h = Horse(id: '1', name: 'Bella');
-    expect(advisor.advise(h, period(temp: 10)).level, BlanketLevel.none);
+    BlanketLevel day(double t, {double precip = 0, double wind = 5, double? sun}) =>
+        advisor.advise(h, period(temp: t, night: false, precip: precip, wind: wind, sun: sun)).level;
+
+    test('22 °C, droog → geen deken', () => expect(day(22), BlanketLevel.none));
+    test('17 °C, droog → vliegendeken met regenstuk', () => expect(day(17), BlanketLevel.flyRain));
+    test('17 °C, regen → vliegendeken met regenstuk',
+        () => expect(day(17, precip: 6), BlanketLevel.flyRain));
+    test('12 °C, bewolkt, droog → regendeken',
+        () => expect(day(12, sun: 0.1), BlanketLevel.rainSheet));
+    test('12 °C, regen en wind → regendeken',
+        () => expect(day(12, precip: 6, wind: 25), BlanketLevel.rainSheet));
+    test('12 °C, volle zon, windstil (+4) → vliegendeken met regenstuk',
+        () => expect(day(12, sun: 1), BlanketLevel.flyRain));
+    test('7 °C → lichte deken', () => expect(day(7), BlanketLevel.light));
+    test('verder: 2 → middel, −3 → zwaar, −8 → extra zwaar', () {
+      expect(day(2), BlanketLevel.medium);
+      expect(day(-3), BlanketLevel.heavy);
+      expect(day(-8), BlanketLevel.extraHeavy);
+    });
+    test('grenzen: 20 → geen, 15 → vlieg, 10 → regen, 5 → licht', () {
+      expect(day(20), BlanketLevel.none);
+      expect(day(15), BlanketLevel.flyRain);
+      expect(day(10), BlanketLevel.rainSheet);
+      expect(day(5), BlanketLevel.light);
+    });
+    test('uitleg noemt de grens', () {
+      final a = advisor.advise(h, period(temp: 17, night: false, precip: 6));
+      expect(a.why, contains('tussen 15 °C en 20 °C'));
+      expect(a.why, contains('zonder regencorrectie'));
+    });
   });
 
-  test('ongeschoren bij 5°C droog: geen deken, nat: regendeken', () {
+  group('niet geschoren, nacht', () {
     final h = Horse(id: '1', name: 'Bella');
-    expect(advisor.advise(h, period(temp: 6)).level, BlanketLevel.none);
-    // Zonder regencorrectie 9 °C (boven 'geen deken'): vliegendeken met
-    // regenstuk; staat die optie uit, dan de regendeken.
-    expect(advisor.advise(h, period(temp: 9, precip: 6)).level,
-        BlanketLevel.flyRain);
-    final off = BlanketAdvisor(AdviceSettings.defaults.copyWith(flyRain: false));
-    expect(off.advise(h, period(temp: 9, precip: 6)).level, BlanketLevel.rainSheet);
-    expect(advisor.advise(h, period(temp: 7, precip: 6)).level, BlanketLevel.rainSheet);
+    BlanketLevel night(double t, {double precip = 0}) =>
+        advisor.advise(h, period(temp: t, night: true, precip: precip)).level;
+
+    test('16 °C → geen deken', () => expect(night(16), BlanketLevel.none));
+    test('12 °C, droog → vliegendeken met regenstuk', () => expect(night(12), BlanketLevel.flyRain));
+    test('12 °C, regen → vliegendeken met regenstuk',
+        () => expect(night(12, precip: 6), BlanketLevel.flyRain));
+    test('8 °C → lichte deken', () => expect(night(8), BlanketLevel.light));
+    test('grenzen: 15 → geen, 10 → vlieg', () {
+      expect(night(15), BlanketLevel.none);
+      expect(night(10), BlanketLevel.flyRain);
+    });
   });
 
   test('volledig geschoren bij 2°C: zwaar met halsstuk', () {
@@ -81,22 +115,32 @@ void main() {
   });
 
   group('eigen instellingen', () {
-    test('hogere grens geeft eerder een deken', () {
+    test('hogere grens geeft eerder een zwaardere deken', () {
       final h = Horse(id: '1', name: 'Bella');
-      final w = period(temp: 6);
-      expect(advisor.advise(h, w).level, BlanketLevel.none);
-      // "Lichte deken vanaf" van -3 naar 7 graden: dan wel een deken.
-      final custom = AdviceSettings.defaults.withThreshold(ClipType.none, 2, 7);
-      expect(BlanketAdvisor(custom).advise(h, w).level.index,
-          greaterThanOrEqualTo(BlanketLevel.light.index));
+      final w = period(temp: 12, night: false);
+      expect(advisor.advise(h, w).level, BlanketLevel.rainSheet);
+      final custom = AdviceSettings.defaults.withThreshold(ClipType.none, 1, 13);
+      expect(BlanketAdvisor(custom).advise(h, w).level, BlanketLevel.light);
     });
 
-    test('grenzen blijven aflopend', () {
+    test('grenzen blijven aflopend, vliegendeken ertussen', () {
       final s = AdviceSettings.defaults.withThreshold(ClipType.full, 1, 25);
       final t = s.thresholdsFor(ClipType.full);
       for (var i = 1; i < t.length; i++) {
         expect(t[i], lessThan(t[i - 1]));
       }
+      expect(s.flyFromFor(ClipType.full), inInclusiveRange(t[1], t[0]));
+      final f = AdviceSettings.defaults.withFlyFrom(ClipType.none, 25);
+      expect(f.thresholdsFor(ClipType.none)[0], greaterThanOrEqualTo(25));
+      final g = AdviceSettings.defaults.withFlyFrom(ClipType.none, 8);
+      expect(g.thresholdsFor(ClipType.none)[1], lessThanOrEqualTo(8));
+    });
+
+    test('nachtgrenzen blijven in volgorde', () {
+      final s = AdviceSettings.defaults.withNightFly(ClipType.none, 17);
+      expect(s.nightNoneFor(ClipType.none), 17);
+      final t = AdviceSettings.defaults.withNightNone(ClipType.none, 8);
+      expect(t.nightFlyFor(ClipType.none), 8);
     });
 
     test('opslaan en teruglezen', () {
@@ -104,108 +148,127 @@ void main() {
       final back = AdviceSettings.fromJson(s.toJson());
       expect(back.wet, 5);
       expect(back.full, AdviceSettings.defaultFull);
+      expect(back.isDefault, isFalse);
+      expect(AdviceSettings.fromJson(AdviceSettings.defaults.toJson()).isDefault, isTrue);
     });
   });
 
-  group('regendeken alleen bij nat weer', () {
-    // Deels geschoren: geen deken vanaf 15 °C, regendeken vanaf 10 °C.
-    const clip = ClipType.partial;
-    final aan = AdviceSettings.defaults.withRainOnlyWet(clip, true);
-    final uit = AdviceSettings.defaults.withRainOnlyWet(clip, false);
+  group('alleen bij regen / nat weer', () {
+    const clip = ClipType.partial; // vlieg 15–20 (alleen bij regen), regen 10–15
 
-    test('12 °C droog, schakelaar uit: regendeken', () {
-      expect(BlanketAdvisor(uit).levelForWeather(clip, 12, wet: false),
-          BlanketLevel.rainSheet);
+    test('regendeken: 12 °C droog, schakelaar uit → regendeken, aan → geen deken', () {
+      final uit = BlanketAdvisor(AdviceSettings.defaults.withRainOnlyWet(clip, false));
+      final aan = BlanketAdvisor(AdviceSettings.defaults.withRainOnlyWet(clip, true));
+      expect(uit.levelForWeather(clip, 12, wet: false), BlanketLevel.rainSheet);
+      expect(aan.levelForWeather(clip, 12, wet: false), BlanketLevel.none);
     });
 
-    test('12 °C droog, schakelaar aan: geen deken', () {
-      expect(BlanketAdvisor(aan).levelForWeather(clip, 12, wet: false),
-          BlanketLevel.none);
+    test('vliegendeken alleen bij regen: 17 °C droog → geen, met regen → vlieg', () {
+      expect(advisor.levelForWeather(clip, 17, wet: false), BlanketLevel.none);
+      expect(advisor.levelForWeather(clip, 14, wet: true, dryEff: 17), BlanketLevel.flyRain);
+      expect(advisor.levelForWeather(clip, 18, wet: true, dryEff: 21), BlanketLevel.none);
     });
 
-    test('standaard zoals vroeger: alleen ongeschoren is "alleen bij nat weer"', () {
-      const s = AdviceSettings.defaults;
-      expect(s.rainOnlyWetFor(ClipType.none), isTrue);
-      expect(s.rainOnlyWetFor(ClipType.partial), isFalse);
-      expect(s.rainOnlyWetFor(ClipType.full), isFalse);
-      final h = Horse(id: '1', name: 'Bella');
-      // ongeschoren, 6 °C droog: geen deken (zoals altijd)
-      expect(advisor.advise(h, period(temp: 6)).level, BlanketLevel.none);
-    });
-
-    test('ongeschoren met schakelaar uit: regendeken ook droog', () {
-      final h = Horse(id: '1', name: 'Bella');
-      final s = AdviceSettings.defaults.withRainOnlyWet(ClipType.none, false);
-      expect(BlanketAdvisor(s).advise(h, period(temp: 6)).level, BlanketLevel.rainSheet);
-    });
-  });
-
-  group('vliegendeken met regenstuk', () {
-    const clip = ClipType.partial; // geen deken vanaf 15 °C, tot 20 °C
-    const a = BlanketAdvisor();
-
-    test('17 °C met regen: vliegendeken met regenstuk', () {
-      expect(a.levelForWeather(clip, 17, wet: true), BlanketLevel.flyRain);
-    });
-
-    test('17 °C droog: geen deken', () {
-      expect(a.levelForWeather(clip, 17, wet: false), BlanketLevel.none);
-    });
-
-    test('boven de bovengrens met regen: geen deken', () {
-      expect(a.levelForWeather(clip, 21, wet: true), BlanketLevel.none);
-    });
-
-    test('uitgeschakeld: zoals vroeger', () {
+    test('vliegendeken uitgeschakeld', () {
       final off = BlanketAdvisor(AdviceSettings.defaults.copyWith(flyRain: false));
-      expect(off.levelForWeather(clip, 17, wet: true), BlanketLevel.none);
+      expect(off.levelForWeather(clip, 17, wet: true, base: 17), BlanketLevel.none);
       // geschoren paard in de regen onder 16 °C: regendeken
-      expect(off.levelForWeather(clip, 15.5, wet: true, base: 15.5),
-          BlanketLevel.rainSheet);
-    });
-
-    test('volledig advies: ongeschoren paard bij 15 °C regen', () {
+      expect(off.levelForWeather(clip, 15.5, wet: true, base: 15.5), BlanketLevel.rainSheet);
       final h = Horse(id: '1', name: 'Bella');
-      // 15 − 3 (nat) = 12 °C: boven "geen deken" (8), onder 20.
-      final adv = advisor.advise(h, period(temp: 15, precip: 6));
-      expect(adv.level, BlanketLevel.flyRain);
-      final fly = Blanket(id: 'f', name: 'Vlieg', kind: BlanketKind.fly, grams: 0);
-      final turnout = Blanket(id: 't', name: 'Buiten', kind: BlanketKind.turnout, grams: 0);
-      expect(BlanketPicker.pick(h, adv, [turnout, fly])!.main.id, 'f');
-      expect(BlanketPicker.pick(h, adv, [turnout]), isNull);
+      expect(off.advise(h, period(temp: 17, night: false)).level, BlanketLevel.none);
     });
 
     test('regen telt niet mee voor het regenstuk (18 °C, regen, wat wind)', () {
-      // deels geschoren: 15 tot 20 °C
       final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
       final adv = advisor.advise(h, period(temp: 18, night: false, precip: 3, wind: 25));
       // 18 − 3 (regen, grootste) − 1 (wind erbij) = 14, zonder regen 16
       expect(adv.effectiveTemp, 14);
       expect(adv.dryTemp, 16);
       expect(adv.level, BlanketLevel.flyRain);
-      expect(adv.flyRainRange, (15.0, 20.0));
       expect(adv.corrections.firstWhere((c) => c.rain).delta, -3);
       expect(adv.corrections.firstWhere((c) => !c.info).delta, -4);
     });
 
-    test('17 °C met regen: vliegendeken, ook al zakt het met regen onder 15', () {
-      final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
-      final adv = advisor.advise(h, period(temp: 17, night: false, precip: 3));
-      expect(adv.effectiveTemp, 14);
+    test('volledig advies: vliegendeken uit de dekenkast', () {
+      final h = Horse(id: '1', name: 'Bella');
+      final adv = advisor.advise(h, period(temp: 17, night: false));
       expect(adv.level, BlanketLevel.flyRain);
+      final fly = Blanket(id: 'f', name: 'Vlieg', kind: BlanketKind.fly, grams: 0);
+      final turnout = Blanket(id: 't', name: 'Buiten', kind: BlanketKind.turnout, grams: 0);
+      expect(BlanketPicker.pick(h, adv, [turnout, fly])!.main.id, 'f');
+      expect(BlanketPicker.pick(h, adv, [turnout]), isNull);
     });
+  });
 
-    test('zonder regencorrectie boven de bovengrens: geen deken', () {
+  group('nachtgrenzen instelbaar', () {
+    test('deels geschoren: nachtgrenzen naar 13 °C', () {
       final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial);
-      final adv = advisor.advise(h, period(temp: 21, night: false, precip: 3));
-      expect(adv.level, BlanketLevel.none);
+      final s = AdviceSettings.defaults
+          .withNightNone(ClipType.partial, 13)
+          .withNightFly(ClipType.partial, 13);
+      final a = BlanketAdvisor(s);
+      expect(a.advise(h, period(temp: 14, night: true)).level, BlanketLevel.none);
+      // 12 °C: onder de nachtgrens → normale grenzen → regendeken
+      expect(a.advise(h, period(temp: 12, night: true)).level, BlanketLevel.rainSheet);
+      expect(AdviceSettings.fromJson(s.toJson()).nightNoneFor(ClipType.partial), 13);
+    });
+  });
+
+  group('instellingen migreren (oud formaat)', () {
+    test('nooit aangepast → nieuwe standaard', () {
+      final old = {
+        'unclipped': [8, 3, -3, -10, -18],
+        'partial': [15, 10, 5, 0, -7],
+        'full': [18, 14, 9, 3, -3],
+        'windModerate': 2, 'windStrong': 4, 'wet': 3, 'stable': 5,
+        'sunny': 2, 'fullSun': 4,
+        'rainOnlyWet': [true, false, false],
+        'flyRain': true,
+        'flyRainUpTo': [20, 20, 22],
+        'nightNone': [10, 10, 10],
+        'blanketChanges': 1, 'dayStart': 9, 'dayEnd': 18,
+      };
+      expect(AdviceSettings.fromJson(old).isDefault, isTrue);
     });
 
-    test('bovengrens blijft boven "geen deken"', () {
-      final s = AdviceSettings.defaults.withThreshold(ClipType.partial, 0, 25);
-      expect(s.flyRainUpToFor(ClipType.partial), greaterThan(25));
-      final t = s.withFlyRainUpTo(ClipType.partial, 3);
-      expect(t.flyRainUpToFor(ClipType.partial), 26);
+    test('aangepast → zelfde advies als vroeger', () {
+      final old = {
+        'unclipped': [9, 3, -3, -10, -18],
+        'wet': 4,
+      };
+      final s = AdviceSettings.fromJson(old);
+      expect(s.wet, 4);
+      expect(s.thresholdsFor(ClipType.none), [20, 3, -3, -10, -18]);
+      expect(s.flyFromFor(ClipType.none), 9);
+      expect(s.flyOnlyWetFor(ClipType.none), isTrue);
+      expect(s.rainOnlyWetFor(ClipType.none), isTrue);
+      final a = BlanketAdvisor(s);
+      // vroeger: 12 °C droog → geen deken, met regen (zonder regencorrectie 12) → vlieg
+      expect(a.levelForWeather(ClipType.none, 12, wet: false), BlanketLevel.none);
+      expect(a.levelForWeather(ClipType.none, 8, wet: true, dryEff: 12), BlanketLevel.flyRain);
+      // 5 °C droog: regendeken alleen bij nat → geen deken (zoals vroeger)
+      expect(a.levelForWeather(ClipType.none, 5, wet: false), BlanketLevel.none);
+      expect(a.levelForWeather(ClipType.none, 1, wet: false), BlanketLevel.light);
+      // de andere scheerstatussen waren niet aangepast → nieuwe standaard
+      expect(s.thresholdsFor(ClipType.partial), AdviceSettings.defaultPartial);
+    });
+
+    test('nieuwe velden opslaan en teruglezen', () {
+      final s = AdviceSettings.defaults
+          .withRainOnlyWet(ClipType.none, true)
+          .withFlyOnlyWet(ClipType.none, true)
+          .withFlyFrom(ClipType.full, 20)
+          .withNightFly(ClipType.full, 12)
+          .copyWith(flyRain: false, sunny: 1, fullSun: 6);
+      final back = AdviceSettings.fromJson(s.toJson());
+      expect(back.rainOnlyWetFor(ClipType.none), isTrue);
+      expect(back.flyOnlyWetFor(ClipType.none), isTrue);
+      expect(back.flyFromFor(ClipType.full), 20);
+      expect(back.nightFlyFor(ClipType.full), 12);
+      expect(back.flyRain, isFalse);
+      expect(back.sunny, 1);
+      expect(back.fullSun, 6);
+      expect(back.isDefault, isFalse);
     });
   });
 
@@ -257,7 +320,9 @@ void main() {
       // volledig geschoren, 'geen deken' pas vanaf 25 °C; 16 °C met volle
       // zon voelt als 20 °C → regendeken
       final custom = BlanketAdvisor(
-          AdviceSettings.defaults.withThreshold(ClipType.full, 0, 25));
+          AdviceSettings.defaults
+              .withThreshold(ClipType.full, 0, 25)
+              .withFlyFrom(ClipType.full, 25));
       final a = custom.advise(h, period(temp: 16, night: false, sun: 1));
       expect(a.sunnyWarm, isTrue);
       expect(a.level, BlanketLevel.rainSheet);
@@ -276,48 +341,6 @@ void main() {
       expect(back.sunProtect, isTrue);
       expect(back.minTemp, 2);
       expect(back.maxTemp, 9);
-    });
-  });
-
-  group("geen deken 's nachts", () {
-    // Niet geschoren met strengere grenzen: geen deken vanaf 15, regendeken
-    // vanaf 10, lichte deken vanaf 5 °C; 's nachts geen deken vanaf 10 °C.
-    final s = AdviceSettings.defaults.copyWith(unclipped: AdviceSettings.defaultPartial);
-    final a = BlanketAdvisor(s);
-    final h = Horse(id: '1', name: 'Bella');
-
-    test('standaard 10 °C', () {
-      expect(AdviceSettings.defaults.nightNoneFor(ClipType.none), 10);
-    });
-
-    test('10 °C nacht droog: geen deken', () {
-      expect(a.advise(h, period(temp: 10, night: true)).level, BlanketLevel.none);
-    });
-
-    test('8 °C nacht: normale grenzen (lichte deken)', () {
-      expect(a.advise(h, period(temp: 8, night: true)).level, BlanketLevel.light);
-    });
-
-    test('overdag verandert er niets', () {
-      final off = BlanketAdvisor(s.withRainOnlyWet(ClipType.none, false));
-      expect(off.advise(h, period(temp: 12, night: false)).level, BlanketLevel.rainSheet);
-      expect(off.advise(h, period(temp: 12, night: true)).level, BlanketLevel.none);
-    });
-
-    test('instelbaar per scheerstatus', () {
-      final t = s.withNightNone(ClipType.none, 13);
-      // 12 °C ligt nu onder de nachtgrens: normale grenzen (regendeken, die
-      // standaard alleen bij nat weer telt → droog geen deken; schakelaar uit
-      // → regendeken).
-      expect(
-          BlanketAdvisor(t.withRainOnlyWet(ClipType.none, false))
-              .advise(h, period(temp: 12, night: true))
-              .level,
-          BlanketLevel.rainSheet);
-      expect(BlanketAdvisor(t).advise(h, period(temp: 9, night: true)).level,
-          BlanketLevel.light);
-      expect(t.nightNoneFor(ClipType.full), 10);
-      expect(AdviceSettings.fromJson(t.toJson()).nightNoneFor(ClipType.none), 13);
     });
   });
 
@@ -516,10 +539,13 @@ void main() {
       expect(advisor.wholeDay(day, night, h.clip, nightMax: 7).level, BlanketLevel.light);
     });
 
-    test("12° / 17°, regen overdag, '1 keer': overdag vliegendeken met regenstuk", () {
+    test("12° / 17°, regen overdag, '1 keer': gemiddeld 14,5 °C → regendeken", () {
       final h = Horse(id: '1', name: 'Bella');
       final day = advisor.advise(h, slot(night: false, lo: 12, hi: 17, precip: 0.5));
-      expect(day.level, BlanketLevel.flyRain);
+      expect(day.dryTemp, 14.5);
+      expect(day.level, BlanketLevel.rainSheet);
+      final warmer = advisor.advise(h, slot(night: false, lo: 14, hi: 19, precip: 0.5));
+      expect(warmer.level, BlanketLevel.flyRain); // gemiddeld 16,5 °C
     });
 
     test('lichte regen in een paar uur telt ook als nat (regenstuk)', () {
@@ -600,48 +626,6 @@ void main() {
           start: start, end: start.add(const Duration(hours: 6)),
           isNight: false, label: 'Ochtend');
       expect(w.sunFraction, 1);
-    });
-  });
-
-  group('instellingen migreren', () {
-    test('oude opgeslagen instellingen krijgen standaard voor nieuwe velden', () {
-      final old = {
-        'unclipped': [9, 3, -3, -10, -18],
-        'partial': AdviceSettings.defaultPartial,
-        'full': AdviceSettings.defaultFull,
-        'windModerate': 2,
-        'windStrong': 4,
-        'wet': 4,
-        'stable': 5,
-      };
-      final s = AdviceSettings.fromJson(old);
-      expect(s.unclipped.first, 9);
-      expect(s.wet, 4);
-      expect(s.rainOnlyWet, AdviceSettings.defaultRainOnlyWet);
-      expect(s.flyRain, isTrue);
-      expect(s.flyRainUpTo, AdviceSettings.defaultFlyRainUpTo);
-      expect(s.sunny, 2);
-      expect(s.fullSun, 4);
-      expect(s.nightNone, AdviceSettings.defaultNightNone);
-    });
-
-    test('nieuwe velden opslaan en teruglezen', () {
-      final s = AdviceSettings.defaults
-          .withRainOnlyWet(ClipType.none, false)
-          .withFlyRainUpTo(ClipType.full, 24)
-          .copyWith(flyRain: false, sunny: 1, fullSun: 6);
-      final back = AdviceSettings.fromJson(s.toJson());
-      expect(back.rainOnlyWet, [false, false, false]);
-      expect(back.flyRainUpToFor(ClipType.full), 24);
-      expect(back.flyRain, isFalse);
-      expect(back.sunny, 1);
-      expect(back.fullSun, 6);
-      expect(back.isDefault, isFalse);
-    });
-
-    test('standaard zet alles terug', () {
-      expect(AdviceSettings.defaults.isDefault, isTrue);
-      expect(AdviceSettings.fromJson(AdviceSettings.defaults.toJson()).isDefault, isTrue);
     });
   });
 

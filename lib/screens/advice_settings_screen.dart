@@ -209,8 +209,8 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
               secondary: _Dot(BlanketLevel.flyRain.color),
               title: const Text('Vliegendeken met regenstuk'),
               subtitle: const Text(
-                  'Bij warm, nat weer: houdt de rug droog zonder dat je paard het '
-                  'te warm krijgt. Zet uit als je er geen hebt.'),
+                  'Een laag tussen geen deken en de regendeken. Houdt de rug droog '
+                  'zonder dat je paard het te warm krijgt. Zet uit als je er geen hebt.'),
               value: s.flyRain,
               onChanged: (v) => save(s.copyWith(flyRain: v)),
             ),
@@ -225,32 +225,7 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
             _Card(
               padding: EdgeInsets.zero,
               child: Column(children: [
-                if (s.flyRain) ...[
-                  _StepRow(
-                    dot: BlanketLevel.flyRain.color,
-                    label: 'Vliegendeken met regenstuk',
-                    hint: 'alleen bij regen · ondergrens is die van Geen deken · '
-                        'regen telt hier niet als kouder',
-                    prefix: 'vanaf',
-                    value: _deg(s.thresholdsFor(clip)[0]),
-                    onMinus: () => save(
-                        s.withThreshold(clip, 0, s.thresholdsFor(clip)[0] - 1)),
-                    onPlus: () => save(
-                        s.withThreshold(clip, 0, s.thresholdsFor(clip)[0] + 1)),
-                  ),
-                  _StepRow(
-                    indent: true,
-                    label: 'Bovengrens',
-                    hint: 'daarboven bij regen geen deken',
-                    prefix: 'tot',
-                    value: _deg(s.flyRainUpToFor(clip)),
-                    onMinus: () => save(
-                        s.withFlyRainUpTo(clip, s.flyRainUpToFor(clip) - 1)),
-                    onPlus: () => save(
-                        s.withFlyRainUpTo(clip, s.flyRainUpToFor(clip) + 1)),
-                  ),
-                  const Divider(height: 1, color: AppColors.line),
-                ],
+                _SubHeader('Overdag'),
                 for (var i = 0; i < 5; i++) ...[
                   if (i > 0) const Divider(height: 1, color: AppColors.line),
                   _StepRow(
@@ -264,18 +239,31 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                     onPlus: () => save(
                         s.withThreshold(clip, i, s.thresholdsFor(clip)[i] + 1)),
                   ),
-                  if (i == 0) ...[
+                  // De vliegendeken met regenstuk zit tussen geen deken en de
+                  // regendeken.
+                  if (i == 0 && s.flyRain) ...[
                     const Divider(height: 1, color: AppColors.line),
                     _StepRow(
-                      icon: Icons.nightlight_round,
-                      label: "Geen deken 's nachts",
-                      hint: 'daaronder de normale grenzen',
+                      dot: BlanketLevel.flyRain.color,
+                      label: 'Vliegendeken met regenstuk',
+                      hint: s.flyOnlyWetFor(clip)
+                          ? 'alleen bij regen · tot ${_deg(s.thresholdsFor(clip)[0])}'
+                          : 'tot ${_deg(s.thresholdsFor(clip)[0])}',
                       prefix: 'vanaf',
-                      value: _deg(s.nightNoneFor(clip)),
-                      onMinus: () =>
-                          save(s.withNightNone(clip, s.nightNoneFor(clip) - 1)),
-                      onPlus: () =>
-                          save(s.withNightNone(clip, s.nightNoneFor(clip) + 1)),
+                      value: _deg(s.flyFromFor(clip)),
+                      onMinus: () => save(s.withFlyFrom(clip, s.flyFromFor(clip) - 1)),
+                      onPlus: () => save(s.withFlyFrom(clip, s.flyFromFor(clip) + 1)),
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.fromLTRB(36, 0, 14, 4),
+                      title: const Text('Vliegendeken alleen bij regen',
+                          style: TextStyle(fontSize: 14)),
+                      subtitle: Text(s.flyOnlyWetFor(clip)
+                          ? 'Bij droog weer: geen deken'
+                          : 'Ook bij droog weer'),
+                      value: s.flyOnlyWetFor(clip),
+                      onChanged: (v) => save(s.withFlyOnlyWet(clip, v)),
                     ),
                   ],
                   if (i == 1)
@@ -301,6 +289,34 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
                     Text('onder ${_deg(s.thresholdsFor(clip)[4])}',
                         style: const TextStyle(color: AppColors.muted)),
                   ]),
+                ),
+                const Divider(height: 1, color: AppColors.line),
+                _SubHeader("'s Nachts"),
+                _StepRow(
+                  dot: BlanketLevel.none.color,
+                  label: "Geen deken 's nachts",
+                  prefix: 'vanaf',
+                  value: _deg(s.nightNoneFor(clip)),
+                  onMinus: () => save(s.withNightNone(clip, s.nightNoneFor(clip) - 1)),
+                  onPlus: () => save(s.withNightNone(clip, s.nightNoneFor(clip) + 1)),
+                ),
+                if (s.flyRain) ...[
+                  const Divider(height: 1, color: AppColors.line),
+                  _StepRow(
+                    dot: BlanketLevel.flyRain.color,
+                    label: "Vliegendeken 's nachts",
+                    hint: s.flyOnlyWetFor(clip) ? 'alleen bij regen' : null,
+                    prefix: 'vanaf',
+                    value: _deg(s.nightFlyFor(clip)),
+                    onMinus: () => save(s.withNightFly(clip, s.nightFlyFor(clip) - 1)),
+                    onPlus: () => save(s.withNightFly(clip, s.nightFlyFor(clip) + 1)),
+                  ),
+                ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                  child: Text(
+                      "Daaronder gelden 's nachts de grenzen van overdag.",
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                 ),
               ]),
             ),
@@ -392,6 +408,25 @@ class _AdviceSettingsScreenState extends State<AdviceSettingsScreen> {
       ),
     );
   }
+}
+
+class _SubHeader extends StatelessWidget {
+  const _SubHeader(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(text.toUpperCase(),
+              style: const TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.muted)),
+        ),
+      );
 }
 
 class _Card extends StatelessWidget {

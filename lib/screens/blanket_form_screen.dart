@@ -58,7 +58,7 @@ class _BlanketFormScreenState extends State<BlanketFormScreen> {
     final t = app.settings.thresholdsFor(horse?.clip ?? ClipType.partial);
     final g = b.grams;
     return g <= 0
-        ? (t[1], t[0])
+        ? (t[1], app.settings.flyFromFor(horse?.clip ?? ClipType.partial))
         : g <= 125
             ? (t[2], t[1])
             : g <= 225

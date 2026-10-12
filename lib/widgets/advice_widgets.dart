@@ -269,7 +269,9 @@ class _Explanation extends StatelessWidget {
 
   static String? _noteFor(Correction c, bool flyRain) {
     final parts = [
-      if (c.rain && flyRain) 'telt niet mee voor de vliegendeken met regenstuk.',
+      if (c.rain && flyRain)
+        'telt niet mee voor geen deken, de vliegendeken met regenstuk en de regendeken '
+            '(die houden de regen tegen).',
       if (c.note != null) c.note!,
     ];
     return parts.isEmpty ? null : parts.join(' ');
@@ -296,52 +298,9 @@ class _Explanation extends StatelessWidget {
         '(${p.fitNote}).';
   }
 
-  /// Waarom dit niveau: in welk bereik valt de temperatuur.
-  String _why(List<double> t, double nightNone) {
-    final a = advice;
-    final eff = a.effectiveTemp;
-    final level = a.userChoice ? (a.advisedLevel ?? a.level) : a.level;
-    if (level == BlanketLevel.flyRain) {
-      final r = a.flyRainRange;
-      final dry = a.dryTemp ?? eff;
-      return 'Het regent, maar het regenstuk houdt de regen tegen. Daarom telt '
-          'regen hier niet als kouder: zonder regencorrectie ${_t(dry)}'
-          '${r != null ? ', tussen ${_t(r.$1)} en ${_t(r.$2)}' : ''} '
-          '→ vliegendeken met regenstuk.';
-    }
-    final (String range, bool inRange) = switch (level) {
-      BlanketLevel.none => ('vanaf ${_t(t[0])}', eff >= t[0]),
-      BlanketLevel.rainSheet => ('${_t(t[1])} tot ${_t(t[0])}', eff >= t[1] && eff < t[0]),
-      BlanketLevel.light => ('${_t(t[2])} tot ${_t(t[1])}', eff >= t[2] && eff < t[1]),
-      BlanketLevel.medium => ('${_t(t[3])} tot ${_t(t[2])}', eff >= t[3] && eff < t[2]),
-      BlanketLevel.heavy => ('${_t(t[4])} tot ${_t(t[3])}', eff >= t[4] && eff < t[3]),
-      BlanketLevel.extraHeavy => ('onder ${_t(t[4])}', eff < t[4]),
-      BlanketLevel.flyRain => ('', true),
-    };
-    final clip = horse.clip.label.toLowerCase();
-    if (a.night && level == BlanketLevel.none && eff < t[0] && eff >= nightNone) {
-      return "'s Nachts geen deken vanaf ${_t(nightNone)} ($clip); de berekende "
-          'temperatuur is ${_t(eff)} → geen deken.';
-    }
-    if (inRange) {
-      return '${_t(eff)} valt bij ${level.label.toLowerCase()} ($range, $clip).';
-    }
-    if (level == BlanketLevel.none && eff >= t[1]) {
-      return '${_t(eff)} valt bij regendeken (${_t(t[1])} tot ${_t(t[0])}), maar die '
-          'is ingesteld als "alleen bij nat weer" en het is droog → geen deken.';
-    }
-    if (level == BlanketLevel.rainSheet && eff >= t[0]) {
-      return 'Een geschoren paard dat onder 16°C buiten in de regen staat, '
-          'krijgt altijd iets waterdichts → regendeken.';
-    }
-    return '${_t(eff)} → ${level.label.toLowerCase()} ($clip).';
-  }
-
   @override
   Widget build(BuildContext context) {
     final a = advice;
-    final settings = AppScope.of(context).settings;
-    final t = settings.thresholdsFor(horse.clip);
     const muted = TextStyle(fontSize: 14, color: AppColors.muted);
     const info = TextStyle(fontSize: 13, color: AppColors.muted, fontStyle: FontStyle.italic);
     const bold = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
@@ -359,7 +318,9 @@ class _Explanation extends StatelessWidget {
             Text(value, style: style),
           ]),
         );
-    final flyRain = a.level == BlanketLevel.flyRain;
+    // Voor geen deken, de vliegendeken en de regendeken telt regen niet mee.
+    final lvl = a.userChoice ? (a.advisedLevel ?? a.level) : a.level;
+    final flyRain = lvl.index <= BlanketLevel.rainSheet.index;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -382,10 +343,12 @@ class _Explanation extends StatelessWidget {
               note: _noteFor(c, flyRain)),
         const Divider(height: 14, color: AppColors.line),
         row('Berekende temperatuur voor ${horse.name}', _t(a.effectiveTemp), style: bold),
-        if (flyRain && a.dryTemp != null)
+        if (a.wet && a.dryTemp != null && a.dryTemp != a.effectiveTemp)
           row('Zonder regencorrectie', _t(a.dryTemp!), style: bold),
         const SizedBox(height: 8),
-        Text(_why(t, settings.nightNoneFor(horse.clip)), style: const TextStyle(fontSize: 13, height: 1.35)),
+        if (a.why.isNotEmpty)
+          Text(a.userChoice ? 'Advies: ${a.why}' : a.why,
+              style: const TextStyle(fontSize: 13, height: 1.35)),
         if (_whyBlanket() != null) ...[
           const SizedBox(height: 6),
           Text(_whyBlanket()!,
