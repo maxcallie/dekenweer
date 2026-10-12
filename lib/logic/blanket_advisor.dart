@@ -220,8 +220,9 @@ class BlanketAdvisor {
   /// Grootste weercorrectie (°C), omhoog en omlaag.
   static const maxWeatherCorrection = 4.0;
 
-  /// Telt dit uur als nat (echte neerslag)?
-  static bool isWetHour(HourWeather h) => h.precip >= 0.2;
+  /// Telt dit uur als nat? Bij minstens 30% neerslagkans én minstens 0,2 mm
+  /// verwachte neerslag.
+  static bool isWetHour(HourWeather h) => h.precipProb >= 30 && h.precip >= 0.2;
 
   /// Vanaf deze maximumtemperatuur telt zonnig weer als 'warm'.
   static const sunnyWarmFrom = 15.0;
@@ -404,9 +405,9 @@ class BlanketAdvisor {
     }
     if (horse.clip != ClipType.none) reasons.add(horse.clip.label);
 
-    // Nat: de periode als geheel, of minstens één uur met echte neerslag
-    // (dan telt de regencorrectie ook mee, dus dan ook het regenstuk).
-    final outsideWet = !stabled && (w.isWet || w.hours.any(isWetHour));
+    // Nat: het blok telt als nat als er minstens één uur nat is.
+    final outsideWet = !stabled &&
+        (w.hours.isEmpty ? w.isWet : w.hours.any(isWetHour));
     // Zonder de regencorrectie: het regenstuk van een vliegendeken houdt de
     // regen juist tegen.
     final dryEff = eff + wetPenalty;

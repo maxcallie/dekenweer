@@ -578,6 +578,50 @@ void main() {
     });
   });
 
+  group('regen in een blok', () {
+    PeriodWeather block(List<(int, double)> probAndMm) {
+      final start = DateTime(2026, 10, 13, 9);
+      final hours = [
+        for (var i = 0; i < probAndMm.length; i++)
+          HourWeather(
+            time: start.add(Duration(hours: i)),
+            temp: 17, feels: 17,
+            precipProb: probAndMm[i].$1,
+            precip: probAndMm[i].$2,
+            code: 61, wind: 5, humidity: 85,
+          ),
+      ];
+      return PeriodWeather.fromHours(hours,
+          start: start, end: start.add(Duration(hours: hours.length)),
+          isNight: false, label: 'Overdag');
+    }
+
+    final h = Horse(id: '1', name: 'Bella', clip: ClipType.partial); // vlieg alleen bij regen
+
+    test('uur nat bij ≥ 30% kans én ≥ 0,2 mm', () {
+      HourWeather hr(int p, double mm) => HourWeather(
+          time: DateTime(2026), temp: 10, feels: 10, precipProb: p, precip: mm,
+          code: 61, wind: 0, humidity: 80);
+      expect(BlanketAdvisor.isWetHour(hr(30, 0.2)), isTrue);
+      expect(BlanketAdvisor.isWetHour(hr(29, 0.5)), isFalse);
+      expect(BlanketAdvisor.isWetHour(hr(90, 0.1)), isFalse);
+    });
+
+    test('één nat uur maakt het blok nat', () {
+      final w = block([(0, 0), (35, 0.2), (0, 0), (0, 0)]);
+      final a = advisor.advise(h, w);
+      expect(a.wet, isTrue);
+      expect(a.level, BlanketLevel.flyRain);
+    });
+
+    test('geen enkel nat uur: droog', () {
+      final w = block([(25, 1.0), (60, 0.1), (0, 0)]);
+      final a = advisor.advise(h, w);
+      expect(a.wet, isFalse);
+      expect(a.level, BlanketLevel.none);
+    });
+  });
+
   group('zon', () {
     final h = Horse(id: '1', name: 'Bella', clip: ClipType.full);
 
