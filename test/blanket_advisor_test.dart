@@ -109,7 +109,7 @@ void main() {
   test('pony heeft minder snel een deken nodig dan een volbloed', () {
     final pony = Horse(id: '1', name: 'Pip', type: HorseType.pony);
     final arab = Horse(id: '2', name: 'Zara', type: HorseType.hotblood);
-    final w = period(temp: -4);
+    final w = period(temp: -1); // pony +3 → 2 °C (middel), volbloed −2 → −3 °C (zwaar)
     expect(advisor.advise(pony, w).level.index,
         lessThan(advisor.advise(arab, w).level.index));
   });
